@@ -1,0 +1,3446 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Цифровой навигатор обучения</title>
+<style>
+/* =====================================================================
+   Навигатор обучения — визуальная тема «Афиши».
+   Только оформление: данные, логика подбора, свайпы и печать не менялись.
+   ===================================================================== */
+@font-face{font-family:'Mont';src:url('Mont/Mont-Light.ttf') format('truetype');font-style:normal;font-weight:300;font-display:swap;}
+@font-face{font-family:'Mont';src:url('Mont/Mont-Regular.ttf') format('truetype');font-style:normal;font-weight:400;font-display:swap;}
+@font-face{font-family:'Mont';src:url('Mont/Mont-SemiBold.ttf') format('truetype');font-style:normal;font-weight:600;font-display:swap;}
+@font-face{font-family:'Mont';src:url('Mont/Mont-Bold.ttf') format('truetype');font-style:normal;font-weight:700;font-display:swap;}
+
+:root{
+  --purple:#5C068C; --ink:#350451; --orange:#FF9E1B; --blue:#385E9D; --yellow:#F4DA40;
+  --navy:#244879; --lilac:#C39BDB; --sub:#5E4870;
+  --on-dark:rgba(255,255,255,.82); --on-dark-soft:rgba(255,255,255,.66);
+  --glass:rgba(255,255,255,.09); --glass-line:rgba(255,255,255,.18);
+  --radius:22px; --gap:18px;
+  --check:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23350451' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E");
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{
+  font-family:'Mont',-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.5;color:#fff;
+  background:#24033A radial-gradient(ellipse 80% 65% at 50% 40%, #7A2C9E 0%, #3A0858 55%, #24033A 100%) fixed;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,textarea{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer;border:none;background:none;transition:transform .2s ease, box-shadow .25s ease, background .2s ease, color .2s ease, opacity .2s ease}
+button:active{transform:scale(.98)}
+
+/* ---------- Каркас: всё на одном экране ---------- */
+#app{max-width:1280px;margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;padding:0 clamp(16px,3vw,32px)}
+#app > header{display:flex;align-items:center;gap:clamp(12px,2vw,24px);padding:clamp(12px,2.2vh,22px) 0 clamp(10px,1.6vh,16px);flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;white-space:nowrap;flex-shrink:0;padding:2px}
+.brand-mark{width:40px;height:40px;border-radius:13px;background:var(--yellow);color:var(--ink);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:700;flex-shrink:0}
+.progress-wrap{flex:1;max-width:460px;margin-left:auto;height:8px;border-radius:99px;background:rgba(255,255,255,.14);overflow:hidden}
+.progress-bar{height:100%;width:0;border-radius:99px;background:var(--yellow);transition:width .4s ease}
+.progress-label{min-width:42px;text-align:right;font-size:14px;font-weight:600;color:var(--on-dark)}
+#main{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:4px 10px clamp(14px,2.4vh,26px);margin:0 -10px;outline:none;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.45) transparent}
+/* Полоса прокрутки видна, только когда экран не помещается (масштаб 200 %, горизонтальный телефон) */
+#main::-webkit-scrollbar{width:8px}
+#main::-webkit-scrollbar-thumb{background:rgba(255,255,255,.45);border-radius:8px}
+#main::-webkit-scrollbar-track{background:transparent}
+
+.screen{display:none}
+.screen.active{display:flex;flex-direction:column;min-height:100%}
+/* Плавная смена экранов: старый экран растворяется в новом без пустого кадра (View Transitions).
+   Шапка и прогресс-бар не мигают — анимируется только область экрана. */
+#main{view-transition-name:nav-screen}
+::view-transition-old(root),::view-transition-new(root){animation:none}
+::view-transition-group(nav-screen){animation-duration:.24s;animation-timing-function:ease}
+::view-transition-old(nav-screen),::view-transition-new(nav-screen){animation-duration:.24s;animation-timing-function:ease;height:100%;object-fit:none;object-position:top left}
+@media (prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---------- Типографика на тёмном фоне ---------- */
+h1{font-size:clamp(28px,3.6vw,50px);line-height:1.02;letter-spacing:-.035em;font-weight:700;margin:0 0 clamp(6px,1.2vh,12px);color:#fff}
+h2{font-size:clamp(20px,2vw,26px);line-height:1.15;letter-spacing:-.02em;font-weight:700;color:#fff;margin:0 0 8px}
+p{color:var(--on-dark);margin:0 0 clamp(8px,1.4vh,14px);max-width:760px}
+.muted{color:var(--on-dark-soft);font-size:15px}
+.screen > p.muted{margin-bottom:clamp(10px,1.8vh,18px)}
+
+.note,.note-filter{background:var(--glass);border:1px solid var(--glass-line);border-radius:16px;padding:10px 16px;color:var(--on-dark);font-size:14px;line-height:1.45;margin-bottom:clamp(10px,1.6vh,16px)}
+.note strong{color:var(--yellow)}
+.note-info{border-color:rgba(244,218,64,.35)}
+
+/* ---------- Кнопки ---------- */
+.btn-primary{min-height:54px;padding:0 30px;border-radius:18px;background:var(--yellow);color:var(--ink);font-weight:700;font-size:16px}
+.btn-primary:hover:not(:disabled){box-shadow:0 14px 30px -14px rgba(244,218,64,.8);transform:translateY(-1px)}
+.btn-primary:disabled{background:rgba(255,255,255,.16);color:rgba(255,255,255,.55);cursor:not-allowed}
+.btn-secondary{min-height:50px;padding:0 22px;border-radius:16px;background:var(--glass);border:1px solid var(--glass-line);color:#fff;font-weight:600}
+.btn-secondary:hover{background:rgba(255,255,255,.16)}
+.btn-secondary.selected{background:var(--yellow);border-color:var(--yellow);color:var(--ink)}
+.btn-ghost{min-height:44px;padding:0 10px;color:var(--on-dark);font-weight:600;text-decoration:underline;text-underline-offset:4px;text-decoration-color:rgba(255,255,255,.35)}
+.btn-ghost:hover{color:#fff}
+
+.actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:10px 14px;margin-top:auto;padding-top:clamp(12px,2vh,20px)}
+.actions > .btn-primary{margin-left:auto}
+
+/* ---------- Поля ---------- */
+label{display:block;margin-bottom:clamp(10px,1.8vh,18px)}
+label > span{display:block;font-size:14px;font-weight:600;color:var(--on-dark);margin-bottom:8px}
+input[type="text"],textarea{width:100%;padding:14px 16px;border-radius:16px;border:2px solid transparent;background:#fff;color:var(--ink);font-size:17px;outline:none}
+input[type="text"]:focus,textarea:focus{border-color:var(--yellow)}
+input[type="text"]:focus-visible,textarea:focus-visible{outline-offset:1px!important}
+textarea{resize:none;min-height:70px;line-height:1.45}
+.form-error{display:flex;align-items:center;gap:10px;margin:10px 0 0;padding:10px 14px;border-radius:14px;background:rgba(244,218,64,.14);border:1px solid rgba(244,218,64,.6);color:#fff;font-size:15px;font-weight:600;line-height:1.35}
+.form-error::before{content:"!";flex:0 0 22px;height:22px;border-radius:50%;background:var(--yellow);color:var(--ink);font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px}
+.actions .form-error{margin:0 auto 0 0;flex:1 1 260px}
+.field-hint{display:none;font-size:13px;color:var(--yellow);margin-top:6px}
+label.invalid input,label.invalid textarea{border-color:var(--orange)}
+label.invalid .field-hint{display:block}
+
+/* ---------- Варианты-карточки (белые афиши) ---------- */
+.options{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
+.option{position:relative;width:100%;min-height:56px;padding:14px 58px 14px 20px;border-radius:20px;background:#fff;color:var(--ink);text-align:left;font-size:16px;line-height:1.35;font-weight:600;box-shadow:0 18px 34px -22px rgba(0,0,0,.65)}
+.option:hover{transform:translateY(-2px)}
+.option::after{content:"";position:absolute;right:16px;top:50%;width:28px;height:28px;margin-top:-14px;border-radius:50%;box-shadow:inset 0 0 0 2px rgba(53,4,81,.6);transition:all .2s ease}
+.option.selected{box-shadow:0 0 0 4px var(--yellow),0 22px 40px -20px rgba(0,0,0,.7);transform:translateY(-2px)}
+.option.selected::after{background:var(--yellow) var(--check) center/62% no-repeat;box-shadow:none}
+.option .muted,.option-subtitle{color:var(--sub);font-weight:400;font-size:14px}
+.option-title{display:block}
+.option-subtitle{display:block;margin-top:2px}
+.opt-num{display:block;font-size:13px;font-weight:700;color:var(--purple);letter-spacing:.06em;margin-bottom:4px}
+
+/* Да / Нет / Не уверен */
+.options-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.options-row .option{text-align:center;padding:14px 46px 14px 16px}
+
+/* Большие «ДА / НЕТ» */
+.options-yesno{display:grid;grid-template-columns:repeat(2,minmax(0,340px));gap:var(--gap);flex:none;min-height:0}
+.options-yesno .option{overflow:hidden;height:200px;min-height:0;padding:28px;display:flex;align-items:flex-end;font-size:clamp(15px,2.34vw,35px);font-weight:700;text-transform:uppercase;letter-spacing:-.01em;line-height:.9}
+.options-yesno .option::before{content:"";position:absolute;top:0;right:0;bottom:0;width:32%;background:var(--purple)}
+.options-yesno .option:nth-child(2)::before{background:var(--orange)}
+.options-yesno .option::after{top:20px;right:20px;margin:0;width:38px;height:38px;box-shadow:inset 0 0 0 2px #fff;background:rgba(255,255,255,.2)}
+.options-yesno .option:nth-child(2)::after{box-shadow:inset 0 0 0 2px var(--ink)}
+
+/* ---------- Афиша ---------- */
+.poster{
+  --band:var(--purple);--accent:var(--purple);--word:#fff;--len:7;
+  position:relative;display:block;overflow:hidden;padding:0!important;border-radius:var(--radius);
+  background:#fff;color:var(--ink);text-align:left;container-type:size;min-height:var(--poster-min,170px);
+  box-shadow:0 22px 44px -26px rgba(0,0,0,.7);
+}
+.poster::after{top:14px;right:14px;margin:0;width:34px;height:34px;z-index:3;background:rgba(255,255,255,.22);box-shadow:inset 0 0 0 2px var(--word,#fff)}
+.poster.selected::after{background:var(--yellow) var(--check) center/60% no-repeat;box-shadow:0 0 0 3px rgba(53,4,81,.25)}
+.poster-band{position:absolute;top:0;right:0;bottom:0;width:36%;background:var(--band);overflow:hidden}
+.poster-word{position:absolute;right:4%;bottom:4cqh;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-weight:700;line-height:.8;letter-spacing:-.03em;color:var(--word);font-size:min(calc(120cqh / var(--len)), 30cqw)}
+.poster-body{position:absolute;top:0;bottom:0;left:0;right:calc(36% + min(13cqh,10cqw) - 6px);padding:clamp(14px,6cqh,26px) clamp(14px,4.5cqw,24px);display:flex;flex-direction:column;gap:6px;z-index:1}
+.poster-title{display:block;font-size:min(clamp(14px,6cqw,26px), calc(46cqw / (var(--tlen, 8) * 0.74)));font-weight:700;line-height:1.04;letter-spacing:-.01em;text-transform:uppercase;color:var(--accent);hyphens:auto;-webkit-hyphens:auto;overflow-wrap:break-word}
+.poster-kicker{display:block;font-size:13px;font-style:italic;font-weight:600;color:var(--accent)}
+.poster-desc{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:4;overflow:hidden;font-size:13px;font-weight:400;line-height:1.45;color:var(--sub);text-transform:none}
+.poster-ghost{display:none;margin-top:6px;font-size:clamp(26px,10cqw,46px);font-weight:700;line-height:.92;letter-spacing:.04em;color:transparent;-webkit-text-stroke:1.2px var(--accent);opacity:.3}
+.poster-meta{display:block;margin-top:auto;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--sub);line-height:1.35}
+.poster-meta b{display:block;font-size:clamp(14px,4.6cqw,20px);color:var(--accent);letter-spacing:0}
+.poster-badge{position:absolute;left:64%;top:54%;transform:translate(-50%,-50%);z-index:2;width:min(28cqh,22cqw);aspect-ratio:1;border-radius:50%;background:#fff;border:5px solid var(--band);box-shadow:0 16px 28px -12px rgba(53,4,81,.5);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--accent);line-height:1}
+.poster-badge b{font-size:min(10cqh,8cqw);font-weight:700}
+.poster-badge small{font-size:min(3.4cqh,9px);font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--sub);margin-top:2px}
+@container (min-height: 330px){ .poster-ghost{display:block} }
+@container (max-height: 250px){ .poster-desc{-webkit-line-clamp:2} }
+@container (max-height: 205px){ .poster-desc{display:none} .poster-badge small{display:none} }
+
+/* Свой запрос — пунктирная афиша */
+.poster-custom{display:flex;flex-direction:column;gap:8px;margin:0;padding:clamp(14px,2vh,22px)!important;border-radius:var(--radius);border:2px dashed rgba(255,255,255,.38);background:rgba(255,255,255,.05);min-height:var(--poster-min,170px)}
+.poster-custom > span{font-size:clamp(18px,1.7vw,24px);font-weight:700;line-height:1.1;text-transform:uppercase;color:#fff;margin:0}
+.poster-custom small{display:block;font-size:13px;line-height:1.45;color:var(--on-dark-soft)}
+.poster-custom textarea{flex:1;min-height:64px;margin-top:auto;font-size:15px;background:rgba(255,255,255,.95)}
+
+/* Сетки афиш */
+#formatOptions,#skillsOptions{display:grid;gap:var(--gap);flex:1;min-height:0;margin-bottom:0;grid-auto-rows:minmax(0,1fr)}
+#formatOptions{grid-template-columns:repeat(4,minmax(0,1fr))}
+#skillsOptions{grid-template-columns:repeat(4,minmax(0,1fr))}
+#formatOptions .poster{--poster-min:230px}
+/* Экран форматов: вертикальное слово не заходит под кружок выбора */
+#formatOptions .poster-word{font-size:min(calc((100cqh - 84px) / (var(--len) * 0.74)), 30cqw)}
+#formatOptions .poster-word.is-two{font-size:min(calc((100cqh - 84px) / (var(--len) * 0.74)), 20cqw);line-height:.84;letter-spacing:clamp(-0.03em, calc((100cqh - 96px - 6 * 0.74 * min(calc((100cqh - 84px) / 4.44), 20cqw)) / 6), 0.35em)}
+.card-band span.is-two{font-size:22px;line-height:.86}
+/* Экран навыков: описание навыка показывается полностью */
+#skillsOptions .poster .poster-desc{display:block;-webkit-line-clamp:unset;overflow:visible;margin-top:4px;font-size:max(11px, min(5.6cqw, 6.4cqh, 16px, calc((64cqw - 6px - 2 * clamp(14px, 4.5cqw, 24px)) / (var(--dlen, 12) * 0.62))));line-height:1.4;color:var(--sub)}
+/* Кружок с числом опущен к низу полосы — текст описания занимает всю белую часть карточки */
+#skillsOptions .poster .poster-body{right:calc(36% + 6px)}
+#skillsOptions .poster .poster-badge{top:auto;bottom:clamp(12px,6cqh,28px);transform:translateX(-50%);left:64%}
+/* Экран форматов: описание формата показывается полностью */
+#formatOptions .poster-desc{display:block;-webkit-line-clamp:unset;overflow:visible;font-size:clamp(12px, min(5.2cqw, 3.6cqh), 15px);line-height:1.4}
+
+/* Обложка */
+.cover-screen{justify-content:center;height:100%}
+.cover-poster{position:relative;flex:none;height:min(640px,100%);min-height:0;border-radius:30px;overflow:hidden;background:#fff;color:var(--ink);container-type:size;box-shadow:0 40px 80px -40px rgba(0,0,0,.8)}
+.cover-poster .poster-band{width:38%}
+.cover-poster .poster-word{font-size:min(calc(118cqh / 9), 28cqw)}
+.cover-body{position:absolute;inset:0 calc(38% + 70px) 0 0;padding:clamp(24px,7cqh,56px) clamp(22px,5cqw,56px);display:flex;flex-direction:column;justify-content:center;gap:clamp(10px,2.4cqh,18px);z-index:1}
+.cover-body h1{color:var(--purple);text-transform:uppercase;font-size:clamp(30px,7.4cqw,76px);letter-spacing:-.03em;margin:0}
+.cover-body h1 span{display:block;font-weight:400}
+.cover-body p{color:var(--sub);font-size:clamp(15px,1.5vw,18px);margin:0;max-width:440px}
+.cover-body .btn-primary{align-self:flex-start;background:var(--purple);color:#fff;margin-top:6px}
+.cover-body .poster-ghost{display:block;font-size:clamp(28px,6cqw,56px);-webkit-text-stroke-color:var(--purple)}
+.cover-poster .poster-badge{left:62%;top:50%;width:min(30cqh,20cqw)}
+.cover-poster .poster-badge b{font-size:min(11cqh,7cqw)}
+
+/* Диагностика */
+#studiedProgramsBlock{display:none!important}
+#lbl-name{max-width:560px}
+.diag-question{font-size:14px;font-weight:600;color:var(--on-dark);margin-bottom:8px}
+#studiedOptions{max-width:760px}
+
+.diag-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,36%);gap:clamp(20px,3vw,40px);flex:1;min-height:0}
+.diag-form{min-width:0}
+.diag-next{display:flex;align-items:center;justify-content:center;gap:12px;width:100%;max-width:760px;min-height:64px;margin-top:clamp(16px,3vh,28px);border-radius:20px;font-size:19px;box-shadow:0 18px 36px -14px rgba(244,218,64,.65)}
+.diag-next span{font-size:22px;transition:transform .2s ease}
+.diag-next:hover span{transform:translateX(4px)}
+.diag-poster{--poster-min:0px;height:100%;max-height:560px;align-self:center}
+.diag-poster .poster-body{right:36%}
+.diag-poster .poster-title{font-size:min(clamp(18px,7cqw,30px), calc(50cqw / (var(--tlen) * 0.74)))}
+.diag-steps{display:flex;flex-direction:column;gap:min(2.4cqh,14px);margin-top:auto}
+.diag-steps span{display:flex;align-items:baseline;gap:10px;font-size:clamp(13px,4.4cqw,16px);font-weight:600;color:var(--ink);line-height:1.25}
+.diag-steps b{font-size:12px;color:var(--purple);min-width:20px}
+.diag-steps span:first-child{color:var(--purple)}
+.diag-steps span:first-child b{color:var(--orange)}
+
+/* Пройденные программы — бенто */
+.studied-pager{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+.studied-arrow,.pager-arrow{width:46px;height:46px;border-radius:50%;background:var(--glass);border:1px solid var(--glass-line);color:#fff;font-size:26px;line-height:1;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.studied-arrow:hover:not(:disabled),.pager-arrow:hover:not(:disabled){background:rgba(255,255,255,.18)}
+.studied-arrow:disabled,.pager-arrow:disabled{opacity:.3;cursor:default}
+.studied-page-label{font-size:15px;font-weight:600;color:var(--on-dark)}
+.studied-count{margin-left:auto;font-size:15px;font-weight:700;color:var(--yellow)}
+.studied-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-auto-flow:row dense;align-content:start;gap:12px;margin-bottom:12px}
+.studied-grid .studied-tile{height:100%;min-height:64px;padding:12px 52px 12px 18px;font-size:15px;line-height:1.35;display:flex;align-items:center}
+.studied-grid .studied-tile.is-wide{grid-column:span 2}
+.studied-actions{display:grid;grid-template-columns:auto 1fr 2fr;gap:12px;align-items:center;margin-top:auto}
+.studied-actions > button{margin:0}
+
+/* Уточнение */
+.refine-layout{display:grid;grid-template-columns:minmax(260px,30%) minmax(0,1fr);gap:clamp(18px,2.4vw,32px);flex:1;min-height:0}
+.refine-poster{--poster-min:300px;min-height:0;height:100%}
+.refine-poster .poster-body{right:calc(36% - 10px)}
+.refine-poster h1{font-size:min(clamp(18px,9cqw,34px), calc(52cqw / (var(--tlen, 8) * 0.74)));color:var(--accent);text-transform:uppercase;letter-spacing:-.01em;line-height:1.02;margin:4px 0 0;hyphens:auto;-webkit-hyphens:auto}
+.refine-poster .poster-badge{left:auto;right:36%;transform:translate(50%,-50%);top:72%}
+.refine-main{display:flex;flex-direction:column;min-height:0}
+.refine-main > p{color:#fff;font-weight:600;font-size:17px}
+#refinementOptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);gap:12px;margin-bottom:0;flex:1;min-height:0;align-content:start}
+#refinementOptions .option{height:100%;font-weight:500;padding:14px 52px 14px 18px;display:flex;flex-direction:column;justify-content:center}
+
+/* ---------- Итог: вкладки и карточки программ ---------- */
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:clamp(10px,1.6vh,16px)}
+.tab{min-height:44px;padding:0 18px;border-radius:999px;background:var(--glass);border:1px solid var(--glass-line);color:#fff;font-weight:600;font-size:15px}
+.tab:hover{background:rgba(255,255,255,.16)}
+.tab.active{background:var(--yellow);border-color:var(--yellow);color:var(--ink)}
+#tabContent{flex:1;min-height:0;display:flex;flex-direction:column}
+#tabContent > p{color:var(--on-dark)}
+#tabContent .cards{display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}
+
+.program-purple{--band:#5C068C;--accent:#5C068C;--word:#fff}
+.program-orange{--band:#FF9E1B;--accent:#8A4B00;--word:#350451}
+.program-blue{--band:#385E9D;--accent:#385E9D;--word:#fff}
+.program-yellow{--band:#F4DA40;--accent:#350451;--word:#350451}
+
+#tabContent .card{position:relative;border:none;background:transparent;border-radius:var(--radius);padding:0;min-width:0;min-height:150px;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+#tabContent .card-inner{position:relative;z-index:1;height:100%;display:flex;flex-direction:column;gap:8px;padding:18px 86px 18px 20px;border-radius:var(--radius);background:#fff;color:var(--ink);overflow:hidden;cursor:pointer;box-shadow:0 22px 44px -26px rgba(0,0,0,.7);transition:transform .35s cubic-bezier(.2,.7,.3,1),opacity .35s ease,box-shadow .25s ease;will-change:transform}
+#tabContent .card.dragging .card-inner{transition:none}
+#tabContent .card.fly-right .card-inner{transform:translateX(120vw) rotate(20deg)!important;opacity:0}
+#tabContent .card.fly-left .card-inner{transform:translateX(-120vw) rotate(-20deg)!important;opacity:0}
+.card-band{position:absolute;top:0;right:0;bottom:0;width:66px;background:var(--band);overflow:hidden;pointer-events:none}
+.card-band span{position:absolute;right:8px;bottom:12px;writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-size:30px;font-weight:700;line-height:.85;letter-spacing:-.02em;text-transform:uppercase;color:var(--word)}
+.card-tags{display:flex;flex-wrap:wrap;gap:6px}
+.card-open{display:block;width:100%;padding:0;margin:0;border:0;background:none;font:inherit;color:inherit;text-align:left;letter-spacing:inherit;line-height:inherit;cursor:pointer;border-radius:6px}
+.card-open:active{transform:none}
+.card-format{display:inline-block;padding:5px 10px;border-radius:999px;background:rgba(53,4,81,.07);color:var(--accent);font-size:12px;font-weight:700}
+.card-title{font-size:clamp(17px,1.5vw,22px);font-weight:700;line-height:1.25;color:var(--ink)}
+.card-refinement{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;font-size:13px;line-height:1.4;color:var(--sub);font-style:italic}
+.card-actions{display:flex;gap:8px;margin-top:auto;padding-top:4px}
+.card-actions button{flex:1;min-height:46px;border-radius:14px;font-weight:700;font-size:14px}
+.btn-like{background:var(--purple);color:#fff}
+.btn-archive{background:rgba(255,158,27,.2);color:var(--ink)}
+/* Выбор на карточке: рамка рисуется внутри карточки (углы не срезаются), фон — прозрачная заливка.
+   «Интересно» — зелёный, «Подумать» — оранжевый. */
+#tabContent .card-inner::before{content:"";position:absolute;inset:0;border-radius:inherit;border:3px solid transparent;pointer-events:none;z-index:2;transition:border-color .2s ease}
+#tabContent .card.liked .card-inner{background:linear-gradient(rgba(46,158,110,.14),rgba(46,158,110,.14)),#fff}
+#tabContent .card.liked .card-inner::before{border-color:#2E9E6E}
+#tabContent .card.liked .btn-like{background:#1F7A50;color:#fff}
+#tabContent .card.liked .btn-like::before{content:"✓ "}
+#tabContent .card.archived .card-inner{background:linear-gradient(rgba(255,158,27,.16),rgba(255,158,27,.16)),#fff}
+#tabContent .card.archived .card-inner::before{border-color:var(--orange)}
+#tabContent .card.archived .btn-archive{background:var(--orange);color:var(--ink)}
+#tabContent .card.archived .btn-archive::before{content:"✓ "}
+.swipe-hint{position:absolute;inset:0;display:flex;align-items:center;padding:0 24px;font-size:20px;font-weight:700;opacity:0;transition:opacity .15s ease;pointer-events:none;z-index:0}
+.swipe-hint-left{justify-content:flex-start;color:var(--yellow)}
+.swipe-hint-right{justify-content:flex-end;color:var(--orange)}
+.card.dragging-right .swipe-hint-left,.card.dragging-left .swipe-hint-right{opacity:1}
+
+/* ---------- Финал ---------- */
+.final-screen{gap:0}
+.final-top{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-bottom:6px}
+.btn-catalog svg{width:18px;height:18px;flex-shrink:0}
+.btn-catalog{display:inline-flex;align-items:center;gap:8px;min-height:44px;padding:0 18px;border-radius:999px;background:var(--glass);border:1px solid var(--glass-line);color:#fff;font-weight:600;font-size:15px}
+.btn-catalog:hover{background:rgba(255,255,255,.16)}
+.final-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:clamp(18px,3vw,40px);flex:1;min-height:0;align-items:stretch}
+.final-recs,.final-contacts{display:flex;flex-direction:column;min-height:0}
+.final-tiles{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);flex:1;max-height:300px;min-height:0;gap:12px;margin:clamp(8px,1.6vh,16px) 0 clamp(8px,1.4vh,14px)}
+.final-tile{position:relative;overflow:hidden;display:flex;flex-direction:column;justify-content:space-between;gap:12px;min-height:clamp(110px,18vh,170px);padding:16px;border-radius:20px;background:#fff;color:var(--ink);text-align:left;font-weight:700;font-size:15px;line-height:1.25;box-shadow:0 18px 34px -22px rgba(0,0,0,.65)}
+.final-tile:hover{transform:translateY(-2px)}
+.final-tile .tile-icon{width:46px;height:46px;border-radius:50%;background:var(--band,var(--purple));color:#fff;display:flex;align-items:center;justify-content:center}
+.final-tile:nth-child(2){--band:var(--orange)}
+.final-tile:nth-child(2) .tile-icon{color:var(--ink)}
+.final-tile .tile-count{position:absolute;top:14px;right:14px;min-width:30px;height:30px;padding:0 8px;border-radius:999px;background:var(--yellow);color:var(--ink);font-size:14px;display:flex;align-items:center;justify-content:center}
+.final-hint{font-size:13px;color:var(--on-dark-soft);margin:0}
+.final-recs > .btn-secondary{align-self:flex-start;margin-top:8px}
+.contacts{position:relative;overflow:hidden;background:#fff;color:var(--ink);border-radius:26px;padding:clamp(16px,2.4vh,24px);padding-right:110px;margin:4px 0 0;box-shadow:0 22px 44px -26px rgba(0,0,0,.7);flex:1;min-height:0;display:flex;align-items:center}
+.contacts::before{content:"";position:absolute;top:0;right:0;bottom:0;width:86px;background:var(--purple)}
+.contacts::after{content:"КОНТАКТ";position:absolute;right:10px;bottom:16px;writing-mode:vertical-rl;transform:rotate(180deg);font-size:44px;font-weight:700;line-height:.85;letter-spacing:-.02em;color:#fff}
+.contact-row{display:flex;align-items:center;gap:clamp(14px,2vw,24px)}
+.contact-row strong{font-size:clamp(18px,1.6vw,22px);text-transform:uppercase;color:var(--purple)}
+.contacts .muted{color:var(--sub);font-size:16px;font-weight:600}
+.contact-kicker{font-size:13px;font-style:italic;font-weight:600;color:var(--purple);margin-bottom:4px}
+.avatar{width:44px;height:44px;border-radius:50%;background:rgba(92,6,140,.14);flex-shrink:0}
+.contacts{justify-content:flex-start}
+.contacts .employee-photo{width:clamp(110px,26vh,240px);height:clamp(110px,26vh,240px);flex:0 0 auto;border-radius:50%;object-fit:cover;object-position:center 40%;border:5px solid #fff;box-shadow:0 0 0 4px var(--yellow);background:#f3f0f4}
+.final-contacts .actions{margin-top:0;padding-top:clamp(10px,1.8vh,16px)}
+
+/* ---------- Модальные окна ---------- */
+.modal-overlay{display:none;position:fixed;inset:0;z-index:100;align-items:center;justify-content:center;padding:16px;background:rgba(24,2,38,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.modal-overlay.active{display:flex}
+#programModal{z-index:200}
+.modal{position:relative;width:100%;max-width:560px;max-height:88vh;max-height:88dvh;overflow-y:auto;background:#fff;color:var(--ink);border-radius:28px;padding:clamp(20px,3vw,32px);box-shadow:0 40px 90px -30px rgba(0,0,0,.8);scrollbar-width:thin}
+.modal p{color:var(--sub);max-width:none}
+.modal .muted{color:var(--sub)}
+.modal-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
+.modal-header h2{color:var(--purple);text-transform:uppercase;font-size:clamp(20px,2vw,26px);margin:0}
+.modal-close{width:44px;height:44px;border-radius:50%;background:rgba(53,4,81,.08);color:var(--ink);font-size:18px;flex-shrink:0}
+.modal-close:hover{background:rgba(53,4,81,.15)}
+#catalogModal .modal{max-width:1040px}
+#programModal .modal{max-width:980px}
+
+.inv-title{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--purple);margin:4px 0 10px}
+.inv-title.is-think{color:#8A4B00;margin-top:18px}
+.inv-card{position:relative;overflow:hidden;width:100%;display:block;text-align:left;padding:14px 76px 14px 16px;margin-bottom:10px;border-radius:18px;background:#fff;color:var(--ink);border:1px solid rgba(53,4,81,.14)}
+.inv-card:hover{border-color:var(--purple)}
+.inv-card::after{content:"";position:absolute;top:0;right:0;bottom:0;width:56px;background:var(--purple)}
+.inv-card.is-think::after{background:var(--orange)}
+.inv-card .card-format{margin-bottom:6px}
+.inv-card .card-title{font-size:16px}
+
+.catalog-toolbar{position:sticky;top:calc(-1 * clamp(20px,3vw,32px));background:#fff;padding:4px 0 12px;margin-bottom:6px;border-bottom:1px solid rgba(53,4,81,.1);z-index:2}
+.catalog-search{width:100%;padding:12px 16px;border-radius:14px;border:2px solid rgba(53,4,81,.14);background:#fff;color:var(--ink);font-size:16px;outline:none;margin-bottom:10px}
+.catalog-search:focus{border-color:var(--purple)}
+.catalog-chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:40px;padding:0 16px;border-radius:999px;background:rgba(53,4,81,.07);color:var(--ink);font-size:14px;font-weight:600;border:1.5px solid transparent}
+.chip.active{background:var(--ink);color:#fff}
+.chip-reset{background:transparent;color:var(--purple);text-decoration:underline}
+.catalog-count{font-size:14px;font-weight:600;color:var(--sub);margin:10px 0}
+#catalogList{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.catalog-item{position:relative;overflow:hidden;padding:16px 64px 16px 16px;border-radius:18px;background:#fff;border:1px solid rgba(53,4,81,.14);cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:transform .2s ease,border-color .2s ease}
+.catalog-item:hover{border-color:var(--band,var(--purple));transform:translateY(-2px)}
+.catalog-item::after{content:"";position:absolute;top:0;right:0;bottom:0;width:46px;background:var(--band,var(--purple))}
+.catalog-item > div:first-child{display:flex;flex-wrap:wrap;gap:6px}
+.catalog-item-title{font-size:16px;font-weight:700;line-height:1.3;color:var(--ink)}
+.catalog-item-desc{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;font-size:13px;line-height:1.45;color:var(--sub)}
+.catalog-empty{grid-column:1/-1;text-align:center;color:var(--sub);padding:30px 10px}
+
+.pm-head{position:relative;overflow:hidden;border-radius:22px;background:var(--ink);color:#fff;padding:22px 150px 22px 24px;margin-bottom:18px}
+.pm-head::after{content:"";position:absolute;top:0;right:0;bottom:0;width:120px;background:var(--band,var(--purple))}
+.pm-head h3{font-size:clamp(20px,2.2vw,28px);line-height:1.1;font-weight:700;text-transform:uppercase;margin-bottom:10px}
+.pm-format{font-size:14px;line-height:1.45;color:rgba(255,255,255,.82)}
+.pm-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.pm-section{border-radius:20px;background:#F6F0FA;padding:18px 20px}
+.pm-section h4{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--purple);margin-bottom:8px}
+.pm-section p{color:var(--ink);font-size:15px;line-height:1.5;margin:0}
+.pm-section ul{list-style:none;display:flex;flex-direction:column;gap:6px}
+.pm-section li{position:relative;padding-left:18px;font-size:14px;line-height:1.45;color:var(--ink)}
+.pm-section li::before{content:"";position:absolute;left:0;top:.5em;width:8px;height:8px;border-radius:50%;background:var(--band,var(--purple))}
+.pm-tools{display:flex;flex-wrap:wrap;gap:6px}
+.pm-tools span{padding:6px 12px;border-radius:999px;background:#fff;border:1px solid rgba(53,4,81,.14);font-size:13px;font-weight:600;color:var(--ink)}
+.pm-learn{grid-column:1/-1}
+
+/* Карточка программы целиком на одном экране: окно шире, текст в em от --pm-fs,
+   размер подбирается скриптом под высоту окна (fitProgramModal). */
+#programModal .modal{max-width:min(1240px,96vw);max-height:94vh;max-height:94dvh;font-size:var(--pm-fs,15px);padding:clamp(16px,2vw,26px) clamp(18px,2.4vw,30px)}
+#programModal .modal-header{margin-bottom:.7em}
+#programModal .modal-header h2{font-size:1.35em}
+#programModal .modal-close{width:40px;height:40px}
+#programModal .pm-head{padding:1.1em 9em 1.1em 1.4em;margin-bottom:.9em}
+#programModal .pm-head::after{width:7em}
+#programModal .pm-head h3{font-size:1.65em;margin-bottom:.4em}
+#programModal .pm-format{font-size:.9em}
+#programModal .pm-grid{gap:.8em}
+#programModal .pm-section{padding:1em 1.2em;border-radius:18px}
+#programModal .pm-section h4{font-size:.8em;margin-bottom:.5em}
+#programModal .pm-section p{font-size:1em}
+#programModal .pm-section ul{gap:.35em}
+#programModal .pm-section li{font-size:.95em;padding-left:1.2em}
+#programModal .pm-tools{gap:.4em}
+#programModal .pm-tools span{font-size:.85em;padding:.35em .8em}
+@media (min-width:900px){
+  #programModal .pm-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"learn results topics" "tools results topics";align-items:stretch}
+  #programModal .pm-learn{grid-column:auto;grid-area:learn}
+  #programModal .pm-results{grid-area:results}
+  #programModal .pm-topics{grid-area:topics}
+  #programModal .pm-toolbox{grid-area:tools}
+}
+
+/* ---------- Постраничное листание ---------- */
+.pager{display:flex;align-items:center;justify-content:center;gap:12px;margin-top:12px;flex-shrink:0}
+.pager-dots{display:flex;gap:6px;align-items:center}
+.pager-dots i{display:block;width:8px;height:8px;border-radius:99px;background:rgba(255,255,255,.3);transition:all .25s ease}
+.pager-dots i.on{width:26px;background:var(--yellow)}
+.pager-label{font-size:13px;font-weight:600;color:var(--on-dark-soft);min-width:44px;text-align:center}
+.is-paged{grid-template-columns:1fr!important;grid-auto-rows:minmax(0,1fr)!important}
+#formatOptions.is-paged,#skillsOptions.is-paged{grid-template-columns:repeat(var(--page-cols,1),minmax(0,1fr))!important}
+#refinementOptions.is-paged{grid-auto-rows:auto!important;align-content:start}
+
+/* ---------- Десктоп ≥ 1100: карточки итога в ряд (раскрытие сохранено) ---------- */
+@media (min-width:1100px){
+  #tabContent .cards{flex-direction:row;align-items:stretch;overflow:hidden}
+  #tabContent .cards .card{flex:1 1 0;min-width:250px;max-width:520px}
+  #tabContent .card-inner::after{content:"Нажмите на карточку — подробнее о программе";display:block;font-size:13px;color:var(--sub);margin-top:2px}
+  #tabContent .cards.is-paged{grid-template-columns:none!important}
+}
+
+/* ---------- Планшет ---------- */
+@media (max-width:899px){
+  .diag-layout{grid-template-columns:1fr}
+  .diag-poster{display:none}
+}
+@media (max-width:1099px){
+  #formatOptions{grid-template-columns:repeat(2,minmax(0,1fr))}
+  #skillsOptions{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .studied-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .refine-layout{grid-template-columns:minmax(220px,34%) minmax(0,1fr)}
+  #refinementOptions{grid-template-columns:1fr}
+}
+
+/* ---------- Телефон ---------- */
+@media (max-width:699px){
+  :root{--gap:12px;--radius:20px}
+  .brand-name{display:none}
+  .progress-wrap{max-width:none}
+  h1{font-size:clamp(26px,7.6vw,32px)}
+  p,.muted{font-size:14px}
+  .screen > p.muted{margin-bottom:10px}
+  .note{font-size:13px;padding:8px 12px}
+  #formatOptions,#skillsOptions{grid-template-columns:1fr}
+  #formatOptions .poster,#skillsOptions .poster,.poster-custom{--poster-min:260px}
+  .options-row{grid-template-columns:1fr}
+  .options-row .option{text-align:left}
+  .options-yesno{grid-template-columns:1fr}
+  .options-yesno .option{height:110px;padding:20px}
+  .studied-grid{grid-template-columns:1fr;gap:8px}
+  .studied-grid .studied-tile{min-height:56px;padding:10px 50px 10px 16px;font-size:14px}
+  .studied-grid .studied-tile.is-wide{grid-column:auto}
+  .studied-actions{grid-template-columns:1fr 1fr}
+  .studied-actions > .btn-ghost{grid-column:1/-1;order:3}
+  .studied-actions > .btn-secondary,.studied-actions > .btn-primary{padding:0 12px}
+  .refine-layout{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr);gap:12px}
+  .refine-poster{--poster-min:116px;height:118px;container-type:size}
+  .refine-poster .poster-badge,.refine-poster .poster-desc{display:none}
+  .refine-poster .poster-body{right:30%;justify-content:center;gap:2px;padding:14px 16px}
+  .refine-poster .poster-band{width:30%}
+  .refine-poster .poster-word{font-size:min(calc(120cqh / var(--len)),26cqw)}
+  .refine-poster h1{font-size:min(26px, calc(60cqw / (var(--tlen, 8) * 0.74)))}
+  .btn-ghost{font-size:13px;padding:0 6px;min-height:40px}
+  .tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.45) transparent;margin-left:-4px;padding-left:4px;padding-bottom:4px}
+  .tabs::-webkit-scrollbar{height:4px}
+  .tabs::-webkit-scrollbar-thumb{background:rgba(255,255,255,.45);border-radius:4px}
+  .tab{flex-shrink:0}
+  #tabContent .card{min-height:0}
+  .card-title{font-size:16px}
+  .card-refinement{-webkit-line-clamp:2}
+  .card-actions button{min-height:44px}
+  .cover-poster{height:100%}
+  .final-tiles{flex:none}
+  .refine-main > p{font-size:15px;margin-bottom:8px}
+  .option{font-size:15px;padding:12px 52px 12px 16px}
+  .actions{gap:6px 10px}
+  .actions{justify-content:center}
+  .actions > .btn-primary{flex:1 1 100%;order:-1;margin-left:0}
+  .actions > .btn-secondary{flex:1 1 100%}
+  .tab{min-height:40px;padding:0 14px;font-size:14px}
+  #tabContent .card{min-height:170px}
+  #tabContent .card-inner{padding:16px 74px 16px 16px}
+  .card-band{width:56px}
+  .card-band span{font-size:26px}
+  .cover-poster{min-height:0;max-height:none}
+  .cover-poster .poster-band{width:30%}
+  .cover-body{inset:0 30% 0 0;padding:24px 20px;justify-content:flex-end}
+  .cover-body h1{font-size:clamp(26px,10cqw,40px)}
+  .cover-body p{font-size:14px}
+  .cover-body .btn-primary{align-self:stretch;padding:0 16px}
+  .cover-poster .poster-badge{left:36%;top:22%;width:min(26cqh,40cqw)}
+  .cover-poster .poster-badge b{font-size:min(9cqh,12cqw)}
+  .final-top{margin-bottom:0}
+  .final-grid{grid-template-columns:1fr;gap:12px;flex:none}
+  .final-recs h1{padding-right:0}
+  .final-tiles{gap:8px;margin:8px 0 6px}
+  .final-tile{min-height:92px;padding:12px;font-size:13px;gap:8px}
+  .final-tile .tile-icon{width:38px;height:38px}
+  .final-tile .tile-icon svg{width:18px;height:18px}
+  .final-hint{display:none}
+  .final-contacts > h2{font-size:18px;margin-bottom:4px}
+  .final-contacts > p{font-size:13px;margin-bottom:8px}
+  .contacts{padding:14px 74px 14px 14px;flex:none}
+  .contacts::before{width:58px}
+  .contacts::after{font-size:30px;right:8px}
+  .contacts .employee-photo{width:76px;height:76px;border-width:3px;box-shadow:0 0 0 3px var(--yellow)}
+  .contact-row strong{font-size:16px}
+  .contacts .muted{font-size:14px}
+  .pm-head{padding:18px 70px 18px 18px}
+  .pm-head::after{width:50px}
+  .pm-grid{grid-template-columns:1fr}
+  #catalogList{grid-template-columns:1fr}
+  /* Навыки и уточнения на телефоне: без листания, экран прокручивается вниз, «Далее» — после списка */
+  #skillsOptions,#refinementOptions{flex:none;min-height:0}
+  #skillsOptions{grid-auto-rows:220px!important}
+  #skillsOptions .poster,#skillsOptions .poster-custom{--poster-min:0px;min-height:0}
+  #refinementOptions{grid-auto-rows:auto!important;align-content:start}
+  #refinementOptions .option{height:auto}
+  .refine-layout{flex:none}
+  .screen.active:has(> #skillsOptions) > .actions,.screen.active.refine-screen > .actions{margin-top:0;padding-top:16px}
+  /* Форматы на телефоне: тоже списком с прокруткой вниз, «Далее» — после списка */
+  #formatOptions{flex:none;min-height:0;grid-auto-rows:340px!important;align-content:start}
+  #formatOptions .poster{--poster-min:0px;min-height:0}
+  /* Итог на телефоне: карточки программ списком с прокруткой вниз, «Далее» — после списка */
+  #tabContent,#tabContent .cards{flex:none;min-height:0}
+  #tabContent .cards .card{flex:none}
+  .screen.active:has(> #tabContent) > .actions{margin-top:0;padding-top:16px}
+  .screen.active:has(> #formatOptions) > .actions{margin-top:0;padding-top:16px}
+}
+
+/* Невысокие телефоны (до ~760px по высоте) */
+@media (max-width:699px) and (max-height:760px){
+  h1{font-size:24px}
+  .screen > p.muted,p{font-size:13px;line-height:1.4}
+  #formatOptions .poster,#skillsOptions .poster,.poster-custom{--poster-min:190px}
+  .btn-primary{min-height:48px}
+  .actions{padding-top:10px}
+  .studied-pager{margin-bottom:8px}
+  .final-tile{min-height:78px;padding:10px}
+  .final-tiles{margin:6px 0 4px}
+  .final-contacts > p{display:none}
+  .contacts{padding:10px 64px 10px 10px}
+  .contacts .employee-photo{width:60px;height:60px}
+}
+
+/* Низкие окна десктопа (1280×640 при масштабе 150%) */
+@media (min-width:700px) and (max-height:700px){
+  #app > header{padding:10px 0 8px}
+  h1{font-size:clamp(26px,3vw,38px)}
+  .screen > p.muted{margin-bottom:8px}
+  .note{padding:7px 14px;margin-bottom:8px}
+  .btn-primary{min-height:46px}
+  .option{min-height:48px;padding-top:10px;padding-bottom:10px}
+  .studied-grid .studied-tile{min-height:52px;padding-top:8px;padding-bottom:8px;font-size:14px}
+  .final-tile{min-height:96px}
+  .contacts .employee-photo{width:110px;height:110px}
+  .poster-custom small{display:none}
+}
+
+/* ---------- Читаемость пояснительных текстов на любых мониторах ----------
+   Тонкое начертание Mont (400) со сглаживанием под Retina на обычных мониторах выглядит бледным.
+   Для описаний навыков, форматов, «По запросу…» и текста в окне «О программе»: полужирное начертание,
+   тёмный цвет, обычное сглаживание и крупнее кегль. */
+#skillsOptions .poster .poster-desc,
+#formatOptions .poster .poster-desc,
+.refine-poster .poster-desc,
+#tabContent .card-refinement,
+#programModal .pm-section p,
+#programModal .pm-section li{
+  font-weight:600;color:var(--ink);
+  -webkit-font-smoothing:auto;-moz-osx-font-smoothing:auto;
+}
+#skillsOptions .poster .poster-desc{font-size:max(13px, min(6cqw, 7cqh, 17px, calc((64cqw - 6px - 2 * clamp(14px, 4.5cqw, 24px)) / (var(--dlen, 12) * 0.68))));line-height:1.4}
+#formatOptions .poster .poster-desc{font-size:clamp(13px, min(5.6cqw, 3.9cqh), 17px);line-height:1.4}
+@media (min-width:700px){.refine-poster .poster-desc{display:block;-webkit-line-clamp:unset;overflow:visible;margin-top:8px;font-size:clamp(14px, 6cqw, 17px);line-height:1.4}}
+#tabContent .card-refinement{font-size:15px;line-height:1.4;color:#4A2F63}
+#programModal .pm-section li{font-size:1em}
+
+/* ---------- Печать (без изменений) ---------- */
+#printArea{position:absolute;left:-9999px;top:0;width:100%}
+@media print {
+  @page { margin: 18mm 16mm; }
+  html, body { height: auto; background: #fff; font-size: 12pt; color: #000; font-family:'Mont',sans-serif; }
+  #app, .modal-overlay, #cursor, .ink-icon { display: none !important; }
+  #printArea { display: block !important; position: static !important; left: auto !important; }
+  .print-header { display: flex; align-items: center; gap: 14px; border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 20px; }
+  .print-logo { width: 52px; height: 52px; border-radius: 10px; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: 700; flex-shrink: 0; }
+  .print-title { font-size: 20pt; font-weight: 700; line-height: 1.15; margin: 0; }
+  .print-subtitle { font-size: 10pt; color: #555; margin-top: 2px; }
+  .print-section-title { font-size: 14pt; font-weight: 700; margin: 22px 0 10px; padding-bottom: 4px; border-bottom: 1px solid #ccc; }
+  .print-skill { font-size: 12pt; font-weight: 600; color: #333; margin: 18px 0 8px; }
+  .print-program { background: #f3f4f6; border-radius: 8px; padding: 12px 14px; margin-bottom: 10px; page-break-inside: avoid; }
+  .print-program-name { font-size: 12pt; font-weight: 700; margin-bottom: 4px; }
+  .print-program-format { font-size: 10pt; color: #1d4ed8; margin-bottom: 6px; font-weight: 500; }
+  .print-program-desc { font-size: 10pt; color: #333; line-height: 1.4; }
+  .print-footer { margin-top: 24px; padding-top: 12px; border-top: 1px solid #ccc; font-size: 9pt; color: #666; text-align: center; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand" aria-hidden="true"><span class="brand-mark">Н</span><span class="brand-name">Навигатор обучения</span></div>
+    <div class="progress-wrap" id="progressAccessible" role="progressbar" aria-label="Прогресс прохождения навигатора" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="progress-label" id="progressLabel">0%</div>
+  </header>
+  <main id="main" tabindex="-1"></main><div id="a11yStatus" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
+</div>
+
+<div class="modal-overlay" id="inventoryModal" role="dialog" aria-modal="true" aria-label="Рекомендации" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Рекомендации</h2>
+      <button class="modal-close" aria-label="Закрыть рекомендации" onclick="closeInventory()">✕</button>
+    </div>
+    <div id="inventoryContent"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="programModal" role="dialog" aria-modal="true" aria-label="О программе" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>О программе</h2>
+      <button class="modal-close" aria-label="Закрыть описание программы" onclick="closeProgramCard()">✕</button>
+    </div>
+    <div id="programContent"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="catalogModal" role="dialog" aria-modal="true" aria-label="Полный каталог" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Полный каталог</h2>
+      <button class="modal-close" aria-label="Закрыть каталог" onclick="closeCatalog()">✕</button>
+    </div>
+    <div class="catalog-toolbar">
+      <input
+        type="text"
+        class="catalog-search"
+        id="catalogSearch"
+        aria-label="Поиск по названию или описанию программы" placeholder="Поиск по названию или описанию..."
+        oninput="renderCatalogList()"
+      >
+      <div class="catalog-chips" id="catalogChips"></div>
+    </div>
+    <div class="catalog-count" id="catalogCount"></div>
+    <div id="catalogList"></div>
+  </div>
+</div>
+
+<div id="printArea"></div>
+
+<script>
+// ============ ДАННЫЕ ============
+const SKILLS = [
+  {
+    id: 'comm', name: 'Коммуникация',
+    description: 'уметь договариваться и конструктивно общаться',
+    refinements: [
+      { id: 'c1', text: 'научиться выступать публично', programs: ['Искусство публичных выступлений: вдохновляй, убеждай, веди', 'Презентация, которая работает: структура, дизайн, наполнение'] },
+      { id: 'c2', text: 'уметь вести эффективные переговоры', programs: ['Переговоры: технологии успешной коммуникации'] },
+      { id: 'c3', text: 'вести конструктивные диалоги и предотвращать конфликты', programs: ['Трудные диалоги: от эмоций к конструктивной коммуникации', 'Управление конфликтами', 'Диалог, а не монолог: искусство быть услышанным', 'Я – не последняя буква в конструктивной коммуникации'] },
+      { id: 'c4', text: 'проводить эффективные совещания', programs: ['Мастерство совещаний: ключ к результативности команды и авторитету руководителя'] },
+      { id: 'c5', text: 'готовить и проводить качественную современную презентацию', programs: ['Презентация, которая работает: структура, дизайн, наполнение'] }
+    ]
+  },
+  {
+    id: 'thinking', name: 'Работа с мышлением',
+    description: 'принимать обоснованные решения, работать с информацией и новыми идеями',
+    refinements: [
+      { id: 't1', text: 'научиться критически осмыслять информацию', programs: ['Основы критического мышления'] },
+      { id: 't2', text: 'научиться анализировать взаимосвязи в системе сложных задач, принимать комплексные решения', programs: ['Системное мышление в управленческой деятельности'] },
+      { id: 't3', text: 'уметь применять инструменты креативности для решения рабочих задач индивидуально и в команде', programs: ['Креативное мышление'] }
+    ]
+  },
+  {
+    id: 'resilience', name: 'Жизнестойкость',
+    description: 'научиться справляться с нагрузкой, стрессом и неопределенностью',
+    refinements: [
+      { id: 'r1', text: 'уметь распознавать свои и чужие эмоции, управлять собственными эмоциями', programs: ['Эмоциональный интеллект'] },
+      { id: 'r2', text: 'научиться бережной самоорганизации в условиях повышенного стресса и напряжения', programs: ['Бережная самоорганизация'] },
+      { id: 'r3', text: 'уметь принимать грамотные решения в состоянии неопределенности', programs: ['Компас антихрупкости. Внутренние опоры руководителя в условиях неопределенности'] },
+      { id: 'r4', text: 'уметь сохранять личную эффективность в условиях работы с большим потоком информации', programs: ['Тайм-менеджмент для руководителей', 'Личная эффективность и стресс-менеджмент'] },
+      { id: 'r5', text: 'научиться создавать пространство диалога и доверия в команде', programs: ['Ты и твоя команда'] }
+    ]
+  },
+  {
+    id: 'management', name: 'Управленческое мастерство',
+    description: 'освоить управленческие инструменты, организовать работу команды',
+    refinements: [
+     { id: 'm1', text: 'уметь создавать бережную и продуктивную рабочую среду для сотрудников', programs: ['Благополучие сотрудников как точка роста эффективности и удовлетворенности в компании', 'Благополучие сотрудников как инструмент управления командой'] },
+      { id: 'm2', text: 'уметь формировать и транслировать корпоративную культуру в коллективе с учетом корпоративных принципов и ценностей компании', programs: ['Основы деловой этики'] },
+      { id: 'm3', text: 'уметь применять на практике навыки эффективной коммуникации и инструменты командного взаимодействия', programs: ['Ты и твоя команда', 'Регулярный менеджмент: управленческая и личная эффективность руководителя'] },
+      { id: 'm4', text: 'научиться работать с информацией: оценивать риски, принимать решения, использовать алгоритм решения задачи', programs: ['Управление задачами'] },
+      { id: 'm5', text: 'освоить функции управленческого цикла: целеполагание, мотивация, обратная связь и контроль, делегирование', programs: ['Управление задачами'] },
+     { id: 'm6', text: 'освоить ситуационный подход к управлению', programs: ['Управление задачами', 'Ситуационное руководство'] },
+      { id: 'm7', text: 'уметь выстраивать командную работу с учётом этапа развития коллектива и вовлечённости сотрудников', programs: ['Технологии формирования успешной команды'] },
+      { id: 'm8', text: 'уметь организовывать коллективное обсуждение так, чтобы приходить к обоснованным решениям и избегать когнитивных ловушек', programs: ['Управление процессами совместного принятия решений'] }
+    ]
+  },
+  {
+    id: 'project', name: 'Проектное управление',
+    description: 'разработать и реализовать проект для команды или компании',
+    refinements: [
+      { id: 'p1', text: 'освоить дизайн-мышление, чтобы придумывать и прорабатывать идеи проектов, ориентированных на клиентов', programs: ['Технология разработки решений (дизайн-мышление)'] },
+      { id: 'p2', text: 'уметь эффективно управлять проектами любого масштаба', programs: ['Мастерство управления проектами: от идеи до реализации'] },
+      { id: 'p3', text: 'уметь создавать реальные проектные улучшения под задачи компании', programs: ['РЕ:АКТИВ 2.0', 'Создание инновационной среды в компании'] },
+      { id: 'p4', text: 'развивать кросс-функциональное взаимодействие между дирекциями', programs: ['РЕ:АКТИВ 2.0', 'Регулярный менеджмент: управленческая и личная эффективность руководителя'] }
+    ]
+  },
+  {
+    id: 'analytics', name: 'Аналитика',
+    description: 'анализировать и изучать данные, работать со статистическими инструментами',
+    refinements: [
+      { id: 'a1', text: 'уметь использовать инструменты и методы стратегического анализа, понимать тренды и работать с ними', programs: ['Стратегическая аналитика'] },
+      { id: 'a2', text: 'применять качественные и количественные методы для анализа, использовать инструменты, позволяющие совершенствовать эффективность работы подразделений', programs: ['Инструменты бизнес-аналитики'] },
+      { id: 'a3', text: 'уметь применять дата-сторителлинг и визуализировать аналитическую информацию', programs: ['Визуализация и презентация данных'] }
+    ]
+  },
+  {
+    id: 'service', name: 'Управление сервисной культурой',
+    description: 'улучшить клиентский сервис и опыт клиента',
+    refinements: [
+      { id: 's1', text: 'научиться эффективно планировать задачи и распределять ресурсы при высокой нагрузке', programs: ['Коммуникация и личная эффективность в управлении персоналом'] },
+      { id: 's2', text: 'научиться применять техники управления стрессом для себя и сотрудников', programs: ['Коммуникация и личная эффективность в управлении персоналом'] },
+      { id: 's3', text: 'научиться выявлять ключевые мотивы сотрудников и применять инструменты нематериального стимулирования', programs: ['Коммуникация и личная эффективность в управлении персоналом'] },
+      { id: 's4', text: 'научиться использовать в работе инструменты ненасильственного общения, а также воспринимать и понимать собственные эмоции и эмоции клиента', programs: ['Создавая впечатления: мастерство клиентского сервиса'] },
+      { id: 's5', text: 'научиться применять на практике ценности и стандарты, создающие сервисную среду', programs: ['Создавая впечатления: мастерство клиентского сервиса'] }
+    ]
+  }
+];
+
+const FORMATS = {
+  'ЛабПро': [
+    'Ты и твоя команда',
+    'РЕ:АКТИВ 2.0',
+    'Регулярный менеджмент: управленческая и личная эффективность руководителя',
+    'Создавая впечатления: мастерство клиентского сервиса',
+    'Коммуникация и личная эффективность в управлении персоналом',
+    'Управление задачами'
+  ],
+  'Мастер Классы': [
+    'Диалог, а не монолог: искусство быть услышанным',
+    'Я – не последняя буква в конструктивной коммуникации'
+  ],
+  'СкилЛайт': [
+    'Личная эффективность и стресс-менеджмент',
+    'Благополучие сотрудников как инструмент управления командой',
+    'Технологии формирования успешной команды',
+    'Управление процессами совместного принятия решений',
+    'Ситуационное руководство',
+    'Создание инновационной среды в компании'
+  ]
+};
+// ============ ПОЛНЫЕ ОПИСАНИЯ ПРОГРАММ ============
+const PROGRAMS_DETAILED = {
+  'Благополучие сотрудников как инструмент управления командой': {
+    format: 'онлайн-курс (дистанционный) · до 3 дней · проходите в своём темпе, скорость выбираете сами с учётом загрузки. Примечание: курс можно пройти в течение месяца.',
+    learn: 'Создавать в команде атмосферу, где люди и работают эффективно, и чувствуют себя комфортно и безопасно. Курс подойдёт руководителям и специалистам HR-блока, а также всем, кто хочет выстроить доверительную и при этом продуктивную обстановку для себя и коллег.',
+    results: [
+      'узнаете, какие бывают комплексные меры поддержки сотрудников (финансовые, карьерные, социальные и др.)',
+      'научитесь внедрять в своей команде конкретные практики благополучия',
+      'научитесь оценивать эффективность программ благополучия: по обратной связи сотрудников, индексу вовлечённости, степени участия',
+      'научитесь определять уровень вовлечённости команды и подбирать инструменты для её повышения',
+      'научитесь искать и формировать смысл в работе для себя и коллег',
+      'научитесь создавать доброжелательную атмосферу и формировать культуру доверия'
+    ],
+    topics: [
+      'что такое благополучие сотрудников и почему оно критично для устойчивого развития бизнеса',
+      'практики карьерного, финансового, социального и общественного благополучия',
+      'как оценить, работают ли программы благополучия',
+      'основы позитивного менеджмента',
+      'план действий: как укрепить доверие, повысить вовлечённость и мотивацию, найти смыслы в работе'
+    ],
+    tools: ['пирамида Дилтса', '5 волн доверия (Кови)', 'индекс вовлечённости', 'позитивный менеджмент', 'план действий']
+  },
+  'Технологии формирования успешной команды': {
+    format: 'онлайн-курс (дистанционный) · до 3 дней · проходите в своём темпе, скорость выбираете сами с учётом загрузки. Примечание: курс можно пройти в течение месяца.',
+    learn: 'Быстро понимать, в каком состоянии команда, отличать настоящую команду от группы с лидером и вести её к слаженной работе. Курс для руководителей, а также для специалистов, которые хотят лучше понимать, как выстраивать работу внутри команды.',
+    results: [
+      'научитесь проводить быструю диагностику состояния команды',
+      'научитесь формулировать и внедрять ключевые элементы эффективной команды',
+      'научитесь определять текущее «жизненное» состояние команды и применять подходящие управленческие действия',
+      'научитесь применять гибкую методологию (Agile/Scrum) для повышения скорости работы и вовлечённости',
+      'научитесь разрабатывать реалистичный план развития сотрудников',
+      'научитесь выбирать эффективный формат совещаний и оптимизировать командное время',
+      'научитесь предотвращать конфликты и конструктивно их решать, выбирая оптимальный стиль руководства'
+    ],
+    topics: [
+      'чем команда отличается от группы с лидером',
+      'этапы развития команды: от разногласий к высокой производительности',
+      'гибкая методология для быстрой реализации задач и повышения мотивации',
+      'кривая обучения и поддержка сотрудников на каждом этапе',
+      'профилактика и разрешение конфликтов, подбор стиля руководства'
+    ],
+    tools: ['диагностика команды', 'Agile/Scrum', 'этапы развития команды', 'кривая обучения', 'стили руководства']
+  },
+  'Управление процессами совместного принятия решений': {
+    format: 'онлайн-курс (дистанционный) · до 3 дней · проходите в своём темпе, скорость выбираете сами с учётом загрузки. Примечание: курс можно пройти в течение месяца.',
+    learn: 'Организовывать коллективное принятие решений так, чтобы собирать разные мнения, не попадать в когнитивные ловушки и приходить к обоснованным, реализуемым решениям. Подойдёт специалистам, которые хотят лучше работать в команде и управлять ходом обсуждения.',
+    results: [
+      'научитесь структурировать и вести обсуждения так, чтобы получать качественные решения и сокращать время совещаний',
+      'научитесь выявлять и нейтрализовать когнитивные искажения в процессе принятия решений',
+      'научитесь выбирать оптимальный формат встречи и состав участников под конкретную задачу',
+      'освоите практические техники для каждого этапа принятия решения: от диагностики проблемы до оценки результата',
+      'научитесь проверять готовность решения к внедрению по опроснику Д. Канемана, Д. Ловалло и О. Сибони',
+      'научитесь вести команду через обсуждение, опираясь на четыре поведенческих фрейма'
+    ],
+    topics: [
+      'как собирать разные точки зрения и выстраивать обсуждение',
+      'методы и инструменты для взвешенных решений',
+      'типичные когнитивные искажения',
+      'выбор формата совещания и состава участников',
+      'обеспечение командной работы и эффективная коммуникация'
+    ],
+    tools: ['когнитивные искажения', 'опросник Канемана–Ловалло–Сибони', 'четыре поведенческих фрейма', 'формат совещания', 'этапы принятия решения']
+  },
+  'Ситуационное руководство': {
+    format: 'онлайн-курс (дистанционный) · до 3 дней · проходите в своём темпе, скорость выбираете сами с учётом загрузки. Примечание: курс можно пройти в течение месяца.',
+    learn: 'Гибко менять стиль руководства под конкретную задачу и конкретного сотрудника: где-то нужны чёткие инструкции, где-то эмоциональная поддержка. Подойдёт руководителям и тем, кто хочет развить лидерские навыки и подготовиться к управленческой роли.',
+    results: [
+      'научитесь диагностировать уровень профессиональной зрелости сотрудника по задаче и поведенческим сигналам',
+      'научитесь выбирать между направляющим и мотивирующим стилем и применять оптимальные управленческие действия',
+      'научитесь корректировать своё поведение, чтобы повышать вовлечённость и самостоятельность сотрудников',
+      'научитесь применять управленческую решётку Блейка–Моутона и принципы теории ERG для анализа мотивации и принятия решений',
+      'научитесь строить планы развития подчинённых с учётом циклов их профессионального роста'
+    ],
+    topics: [
+      'идеи ситуационного лидерства',
+      'диагностика профессиональной зрелости',
+      'стили управления: от чётких инструкций до эмоциональной поддержки',
+      'модели повышения эффективности работы',
+      'персонализированный подход к развитию сотрудников'
+    ],
+    tools: ['ситуационное лидерство', 'профессиональная зрелость', 'решётка Блейка–Моутона', 'теория ERG', 'план развития сотрудника']
+  },
+  'Создание инновационной среды в компании': {
+    format: 'онлайн-курс (дистанционный) · до 3 дней · проходите в своём темпе, скорость выбираете сами с учётом загрузки. Примечание: курс можно пройти в течение месяца.',
+    learn: 'Запускать и масштабировать новые идеи: от появления идеи до внедрения. Курс для специалистов, которые хотят быстрее превращать идеи в рабочие решения и снижать риск провалов, а ещё создать среду, где новое поддерживают.',
+    results: [
+      'научитесь диагностировать потенциал идеи и оценивать её жизнеспособность по модели R-W-W и матрице рисков',
+      'освоите 7 моделей возникновения идей и креативные техники для генерации инновационных концепций',
+      'научитесь планировать инновационные инициативы, предвидеть риски и корректировать действия при отклонениях',
+      'научитесь оценивать, насколько успешно внедряются новые решения',
+      'научитесь замечать, что мешает и что помогает внедрять инновации в компании',
+      'сможете предложить конкретные шаги для создания среды, где новые идеи приветствуют'
+    ],
+    topics: [
+      'природа инноваций и этапы от идеи до внедрения',
+      'механизмы генерации новых идей, личная инновативность',
+      'оценка жизнеспособности концепций, планирование реализации и выбор показателей успеха',
+      'управление изменениями',
+      'трансформация организационной культуры для поддержки нововведений'
+    ],
+    tools: ['модель R-W-W', 'матрица рисков', '7 моделей возникновения идей', 'креативные техники', 'показатели успеха']
+  },
+  'Искусство публичных выступлений: вдохновляй, убеждай, веди': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Готовить и проводить выступления, которые слушают: с понятной структурой, уверенной подачей и умением работать с вопросами и слайдами. Всё отрабатывается на игровых кейсах.',
+    results: [
+      'освоите составляющие подготовки и проведения эффективных профессиональных выступлений',
+      'научитесь качественно готовиться и уверенно выступать'
+    ],
+    topics: [
+      'цель и структура выступления',
+      'вербальные и невербальные приёмы коммуникации',
+      'инструменты влияния на аудиторию',
+      'уверенность при работе с вопросами и слайдами',
+      'подготовка и проведение презентации'
+    ],
+        tools: ['модель «Лодка»', 'цель выступления', 'структура', 'энергия выступления', 'работа с вопросами']
+  },
+  'Презентация, которая работает: структура, дизайн, наполнение': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Делать презентации, которые понятны с первого взгляда: правильно выстраивать структуру, оформлять слайды по законам дизайна («дизайн не для дизайнеров») и уверенно работать в PowerPoint.',
+    results: [
+      'узнаете, как структурировать информацию в презентации и доступно её подать',
+      'познакомитесь с инструментами PowerPoint для лёгкого создания презентаций',
+      'освоите методы создания наглядных и информативных презентаций',
+      'разработаете собственную презентацию'
+    ],
+    topics: [
+      'цели и виды презентаций, типы аудитории',
+      'принципы дизайна',
+      'наполнение презентации',
+      'макеты и работа с инструментами PowerPoint',
+      'сценарий выступления и презентации'
+    ],
+    tools: ['PowerPoint', 'принципы дизайна', 'одна мысль на слайд', 'макет презентации', 'типографическая иллюстрация']
+  },
+  'Переговоры: технологии успешной коммуникации': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Готовиться к переговорам и вести их: выбирать стратегию, понимать мотивы сторон и не поддаваться на манипуляции.',
+    results: [
+      'освоите стратегию и тактику ведения переговоров',
+      'узнаете особенности позиций сторон и типы поведения на каждом этапе переговоров',
+      'научитесь планировать и реализовывать переговорные стратегии'
+    ],
+    topics: [
+      'основные понятия переговорного процесса',
+      'переговорное пространство и система координат',
+      'психологические аспекты переговоров',
+      'психология влияния, манипуляции и противостояние им',
+      'практика на кейсах'
+    ],
+    tools: ['потребности и мотивы', 'переговорная позиция', 'картина мира', 'технология прогнозирования', 'работа с кейсами']
+  },
+  'Трудные диалоги: от эмоций к конструктивной коммуникации': {
+    format: 'очно · 2 дня (два однодневных тренинга)',
+    learn: 'Говорить о сложном — без агрессии и без молчания. Научитесь отстаивать свою позицию, держать границы и сохранять спокойствие в эмоциональных разговорах.',
+    results: [
+      'узнаете принципы и уровни коммуникации для доверительных отношений в команде',
+      'научитесь уверенно выражать мысли и отстаивать позицию, не прибегая к агрессии или пассивности',
+      'поймёте, как эмоции влияют на общение, и научитесь управлять своими эмоциями и эмоциями других',
+      'освоите инструменты проведения трудных диалогов и поиска решений',
+      'получите навыки экологичного общения с коллегами и партнёрами'
+    ],
+    topics: [
+      'роль эмоций в коммуникации',
+      'границы и потребности',
+      'принципы ассертивного (уверенного неконфликтного) поведения',
+      'конструктивное взаимодействие в трудных диалогах'
+    ],
+    tools: ['ассертивность', 'экологичное общение', 'границы и потребности', 'эмоции в диалоге', 'поиск решения']
+  },
+  'Управление конфликтами': {
+    format: 'очно или онлайн · 2 дня + онлайн-тренинг',
+    learn: 'Понимать, как устроен конфликт, замечать его на ранней стадии и осознанно выбирать, как себя вести. В конце вы сформируете собственную стратегию поведения в конфликтных ситуациях.',
+    results: [
+      'поймёте, что такое конфликт, какие у него функции и компоненты',
+      'научитесь определять глубину конфликта и выбирать стратегию поведения',
+      'сформируете и презентуете свою индивидуальную стратегию поведения в конфликте'
+    ],
+    topics: [
+      'особенности конфликта и конфликтных ситуаций',
+      'рационально-эмоциональная модель конфликта',
+      'позиции сторон',
+      'принципы провокации и амортизации конфликта',
+      'анализ собственных взаимоотношений с конфликтом'
+    ],
+    tools: ['скрытый конфликт', 'стратегии поведения', 'защита границ', 'компромисс', 'внутриличностный конфликт']
+  },
+  'Диалог, а не монолог: искусство быть услышанным': {
+    format: 'очно · 1 день · есть самостоятельная работа',
+    learn: 'Высказывать свои мысли и отстаивать интересы без страха быть непонятым или отвергнутым. Научитесь выстраивать разговор так, чтобы он был диалогом, а не спором или монологом, и заранее замечать, где он сворачивает в трудную сторону.',
+    results: [
+      'освоите способы выражать свои идеи и отстаивать интересы',
+      'узнаете, какие есть уровни коммуникации и как не доводить общение до трудных диалогов',
+      'потренируете Я-высказывания, поймёте роль эмоций в коммуникации',
+      'освоите принципы ассертивного поведения и конструктивного взаимодействия'
+    ],
+    topics: [
+      'способы выражать идеи и отстаивать интересы',
+      'уровни коммуникации',
+      'как предотвращать трудные диалоги',
+      'тренировка Я-высказываний',
+      'роль эмоций в коммуникации'
+    ],
+        tools: ['Я-высказывания', 'ассертивное поведение', 'уровни коммуникации', 'роль эмоций', 'конструктивное взаимодействие']
+  },
+  'Я – не последняя буква в конструктивной коммуникации': {
+    format: 'очно · 1 день · есть самостоятельная работа',
+    learn: 'Говорить о своих идеях и интересах так, чтобы вас слышали, — и при этом слышать собеседника. Разберётесь, как строить разговор как диалог, не доводить его до трудного и не бояться, что вас не поймут или отвергнут.',
+    results: [
+      'научитесь уверенно выражать свои идеи и отстаивать интересы',
+      'узнаете, какие бывают уровни коммуникации и как не доводить общение до трудных диалогов',
+      'потренируете Я-высказывания и принципы ассертивного поведения'
+    ],
+    topics: [
+      'уровни коммуникации',
+      'роль эмоций в общении',
+      'Я-высказывания',
+      'ассертивное поведение',
+      'конструктивное взаимодействие'
+    ],
+    tools: ['Я-высказывания', 'ассертивность', 'уровни коммуникации', 'эмоции в общении', 'конструктивное взаимодействие']
+  },
+  'Мастерство совещаний: ключ к результативности команды и авторитету руководителя': {
+    format: 'очно · 2 дня + практическая работа после тренинга · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Понимать, нужно ли совещание вообще, а если нужно — проводить его так, чтобы все приходили к решению. Научитесь управлять смыслом, содержанием и эмоциональным климатом встречи.',
+    results: [
+      'научитесь определять, когда совещание действительно нужно',
+      'узнаете, как управлять содержанием и эмоциональным климатом совещания',
+      'познакомитесь с подходами к проведению совещаний и выберете наиболее эффективные для себя',
+      'освоите способы выработки групповых согласованных решений',
+      'создадите руководство по подготовке и проведению совещаний для своего подразделения'
+    ],
+    topics: [
+      'кому, как и когда нужно (и не нужно) проводить совещания',
+      'факторы эффективности совещания',
+      'виды смыслов совещаний',
+      'методы групповых решений и достижения согласия',
+      'разбор реальных совещаний'
+    ],
+    tools: ['матрица СеЗаМ', 'матрица приоритетности', '5 управленческих факторов', 'цель совещания', 'нейросети']
+  },
+  'Основы критического мышления': {
+    format: 'онлайн · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения, практические работы)',
+    learn: 'Не попадаться на уловки собственного мозга и чужих манипуляций. Научитесь отделять факты от домыслов, проверять информацию и аргументированно принимать решения, когда данных много, а ясности мало.',
+    results: [
+      'поймёте, что такое критическое мышление и чем оно полезно руководителю',
+      'узнаете, какие ментальные ловушки мешают принимать решения, и как их обходить',
+      'освоите инструменты противодействия манипуляциям, принципы аргументации и алгоритм принятия решений'
+    ],
+    topics: [
+      'признаки и принципы критического мышления',
+      'роль психологии в критическом мышлении',
+      'работа с информацией',
+      'принятие решений'
+    ],
+    tools: ['когнитивные искажения', 'работа с информацией', 'аргументация (тезис)', 'алгоритмы принятия решений', 'анализ']
+  },
+  'Системное мышление в управленческой деятельности': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Смотреть на рабочие задачи не по отдельности, а как на систему, где всё связано со всем. Научитесь находить корень проблем и заранее видеть, к чему приведёт решение.',
+    results: [
+      'научитесь комплексно оценивать производственные и организационные ситуации',
+      'освоите техники и методы системного анализа производственных задач',
+      'получите опыт принятия управленческих решений с учётом закономерностей поведения сложных систем'
+    ],
+    topics: [
+      'что такое системное мышление и как оно влияет на качество решений',
+      'сложные системы и их характеристики',
+      'привычки системного мышления',
+      'развитие системного мышления как управляемый процесс'
+    ],
+    tools: ['анализ проблемного графа', '5 почему', 'анализ S-кривой', 'сложные системы', 'системный подход']
+  },
+  'Креативное мышление': {
+    format: 'очно или онлайн · 3 дня (2 дня + 1 день) · есть самостоятельная работа (работа с чат-ботом между тренингами, материалы для самостоятельного изучения)',
+    learn: 'Включать креативность по запросу — в одиночку и командой — и создавать среду, где идеи рождаются, а не гаснут. Много практики на реальных рабочих задачах.',
+    results: [
+      'поймёте, как развить свою креативность и использовать её для повышения эффективности',
+      'узнаете, какую среду нужно создать, чтобы команда раскрывала свой творческий потенциал',
+      'освоите разнообразные методики и техники креативности',
+      'разработаете личный план развития креативности'
+    ],
+    topics: [
+      'что такое креативность и как она влияет на рабочие процессы',
+      'как работает мозг: ментальные модели и когнитивные искажения',
+      'этапы креативного процесса',
+      'методы и инструменты для индивидуальной и командной работы',
+      'формирование креативной среды'
+    ],
+    tools: ['мозговой штурм', 'метод фокальных объектов', 'сценарное планирование', 'пирамида Минто', 'нейросети']
+  },
+  'Эмоциональный интеллект': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Понимать, откуда берутся эмоции — свои и чужие, и управлять ими так, чтобы они помогали, а не мешали работать и принимать решения.',
+    results: [
+      'освоите ключевые составляющие эмоционального интеллекта',
+      'научитесь регулировать своё эмоциональное состояние',
+      'научитесь управлять своими эмоциями и эмоциями других людей ради командных результатов'
+    ],
+    topics: [
+      'современные модели эмоционального интеллекта',
+      'техники осознания эмоций и саморегуляции',
+      'использование эмоций для принятия решений',
+      'страх и работа с ним',
+      'как справляться с эмоциональным истощением и снижением работоспособности'
+    ],
+        tools: ['модель Гоулмана', 'пирамида Дилтса', 'три вида мозга', 'осознание эмоций', 'саморегуляция']
+  },
+  'Бережная самоорганизация': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Организовывать работу и себя так, чтобы не выгорать. Узнаете, как устроены внимание, мышление и память, и научитесь беречь свои ресурсы, концентрироваться и вовремя восстанавливаться.',
+    results: [
+      'узнаете принципы работы мышления и памяти человека',
+      'получите навыки сохранения ресурсов и умение концентрироваться',
+      'научитесь чётко формулировать задачи и восстанавливаться для продуктивной работы'
+    ],
+    topics: [
+      'как работают внимание, мышление и память',
+      'принципы бережной самоорганизации',
+      'организация себя в пространстве и во времени',
+      'техники экономии «мыслетоплива» и бережного планирования'
+    ],
+    tools: ['5S для мозга', 'модель Канемана', 'управление стрессом', 'прокрастинация', 'разгрузка памяти']
+  },
+  'Компас антихрупкости. Внутренние опоры руководителя в условиях неопределенности': {
+    format: 'очно · 2 дня + итоговая онлайн-встреча · есть самостоятельная работа (задания на внедрение знаний в рабочую практику, материалы для самостоятельного изучения)',
+    learn: 'Сохранять опору и эффективность, когда вокруг неопределённость, и поддерживать в это время свою команду.',
+    results: [
+      'узнаете, что происходит с человеком в неопределённости и как это влияет на психику и поведение',
+      'поймёте, какие внутренние процессы важно учитывать, чтобы оставаться жизнестойким и создать жизнестойкую команду',
+      'узнаете, как руководителю поддерживать команду и сохранять позитивный климат'
+    ],
+    topics: [
+      'феномены неопределённости и особенности поведения в ней',
+      'функциональные состояния в неопределённости',
+      'рациональные и иррациональные установки',
+      'жизнестойкость руководителя и жизнестойкая команда'
+    ],
+    tools: ['внутренние опоры', 'пирамида Дилтса', 'поддержка команды', 'исследования Базарова', 'биология лидерства']
+  },
+  'Тайм-менеджмент для руководителей': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Управлять временем и личной энергией, когда задач и информации очень много: планировать, расставлять приоритеты, делегировать.',
+    results: [
+      'освоите инструменты планирования и управления временем',
+      'научитесь определять приоритетность задач',
+      'освоите техники делегирования и поддержания работоспособности'
+    ],
+    topics: [
+      'классический и современные подходы к управлению временем',
+      'стили управления временем',
+      'риски невыполнения задач и как их снижать',
+      'управление большим потоком задач',
+      'управление уровнем личной энергии'
+    ],
+    tools: ['матрица приоритетности', 'принцип Парето', 'диаграмма Ганта', 'SMART', 'делегирование']
+  },
+  'Личная эффективность и стресс-менеджмент': {
+    format: 'онлайн-курс · проходите в любое время в комфортном для вас темпе',
+    learn: 'Понимать, как устроен стресс, и управлять им, чтобы не доводить себя до выгорания. Курс подойдёт всем сотрудникам, кто испытывает стресс постоянно или время от времени, хочет беречь свои ресурсы и сохранять ответственность за результат даже в напряжённых условиях.',
+    results: [
+      'поймёте, как возникает стресс, и научитесь распознавать источники его накопления',
+      'освоите алгоритм самопомощи при стрессовых реакциях и примените его на себе',
+      'освоите приёмы снижения напряжения и предотвращения выгорания',
+      'сформируете навык раннего мониторинга своего состояния и систему мер для поддержания устойчивости на работе'
+    ],
+    topics: [
+      'природа стресса: почему организм одинаково реагирует на физические и психологические угрозы',
+      'как длительная мобилизация влияет на самочувствие',
+      'три стадии стресса и как меняется состояние на каждой из них',
+      'жизнестойкость: как она помогает переосмыслить трудности и сохранить внутренние ресурсы',
+      'как распознать выгорание и отслеживать своё состояние на работе и дома'
+    ],
+    tools: ['стресс-менеджмент', 'три стадии стресса', 'жизнестойкость', 'профилактика выгорания', 'алгоритм самопомощи']
+  },
+  'Ты и твоя команда': {
+    format: 'онлайн · 6 дней (три двухдневных тренинга: «Современный руководитель», «Руководитель и команда», «Инструменты работы с персоналом»)',
+    learn: 'Строить команду, которая работает вместе и доверяет руководителю: разберётесь в лидерстве, обратной связи, конфликтах и эмоциях людей.',
+    results: [
+      'узнаете тренды современного лидерства и работы с командой',
+      'научитесь применять навыки эффективной коммуникации и инструменты командного взаимодействия',
+      'освоите методы развития эмоционального интеллекта у себя и подчинённых',
+      'научитесь создавать в команде пространство диалога и доверия'
+    ],
+    topics: [
+      'роль руководителя и функции HR в его работе',
+      'принципы обратной связи и управление конфликтами',
+      'групповая динамика, диагностика команды и командные роли',
+      'позитивное лидерство и эффективные модели управления',
+      'эмоциональный интеллект и социальная чуткость в работе с командой'
+    ],
+    tools: ['лидерство', 'обратная связь', 'вовлечённость персонала', 'удержание персонала', 'эмоциональный интеллект']
+  },
+  'Благополучие сотрудников как точка роста эффективности и удовлетворенности в компании': {
+    format: 'очно · 3 дня (2 дня + 1 день) · есть самостоятельная работа (между тренингами и материалы для самостоятельного изучения)',
+    learn: 'Понимать, из чего складывается благополучие человека на работе, как его оценивать и как внедрять практики, которые улучшают и самочувствие людей, и результаты команды.',
+    results: [
+      'узнаете, чем полезна культура благополучия в компании',
+      'научитесь оценивать и отслеживать персональное благополучие своё и сотрудников',
+      'научитесь аргументированно говорить с сотрудниками на эту тему'
+    ],
+    topics: [
+      'понятие благополучия и почему оно сейчас актуально',
+      'комплексная модель персонального благополучия',
+      'позитивный менеджмент и его принципы',
+      'сложности внедрения практик благополучия и как их преодолеть',
+      'практическая работа: анализ и проектирование практик'
+    ],
+        tools: ['модель Селигмана', 'позитивный менеджмент', '5 элементов благополучия', 'колесо доверия', 'вовлечённость']
+  },
+  'Основы деловой этики': {
+    format: 'очно · 2 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Как принято вести себя и общаться в Холдинге, как формируется корпоративная культура и как на неё влиять. Научитесь спокойно обсуждать поведение, которое выходит за рамки стандартов.',
+    results: [
+      'поймёте, как формируется уровень корпоративной культуры в коллективе и как на него влиять',
+      'научитесь конструктивно обсуждать поведение, не соответствующее корпоративным стандартам',
+      'освоите техники ассертивного (уверенного неконфликтного) поведения',
+      'освоите основы массовых коммуникаций'
+    ],
+    topics: [
+      'особенности корпоративной культуры и деловой этики, Кодекс деловой этики',
+      'социальный интеллект как основа понимания в коллективе',
+      'признаки и приёмы минимизации микроагрессии',
+      'деловой стиль, управленческая беседа, совещания и переговоры'
+    ],
+    tools: ['ассертивность', 'социальный интеллект', 'микроагрессия', '5 уровней культуры', 'языки признательности']
+  },
+  'Технология разработки решений (дизайн-мышление)': {
+    format: 'очно · 2 дня + защита проектов · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Придумывать и дорабатывать идеи проектов, отталкиваясь от потребностей клиента. Вместе с командой пройдёте весь путь от замысла до готового прототипа.',
+    results: [
+      'пройдёте путь от идеи до прототипа вместе с командой',
+      'получите новый инструмент разработки проектов и предложений с опорой на потребности пользователя',
+      'получите опыт решения сложных задач нестандартными методами'
+    ],
+    topics: [
+      'принципы и этапы дизайн-мышления',
+      'эмпатия и взаимодействие с клиентом',
+      'фокусировка на проблеме и постановка задач',
+      'поиск и выбор лучшего решения',
+      'прототипирование и тестирование, защита практических работ'
+    ],
+    tools: ['карта эмпатии', 'путь клиента', 'прототипирование', 'метод фокальных объектов', 'сторителлинг']
+  },
+  'Мастерство управления проектами: от идеи до реализации': {
+    format: 'очно · 3 дня · есть самостоятельная работа (материалы для самостоятельного изучения)',
+    learn: 'Вести проект на всех этапах: от старта и плана до бюджета, рисков, контроля и завершения. Попробуете необычный подход — методику Lego Serious Play.',
+    results: [
+      'познакомитесь с ключевыми требованиями к управлению проектами',
+      'узнаете современные подходы к проектному управлению',
+      'попробуете на практике методику Lego Serious Play',
+      'научитесь применять принципы и инструменты проектного управления в собственных процессах'
+    ],
+    topics: [
+      'жизненный цикл проекта, проектные роли, методологии',
+      'инициирование и подготовка эффективного старта',
+      'календарное планирование и бюджет проекта',
+      'управление рисками и коммуникациями',
+      'контроль исполнения и завершение проекта'
+    ],
+    tools: ['матрица RACI', 'проектный треугольник', 'матрица рисков 5×5', 'Lego Serious Play', 'цикл Деминга']
+  },
+  'РЕ:АКТИВ 2.0': {
+    format: 'два модуля + межмодульная проектная работа · 86 академических часов',
+    learn: 'Превращать идеи в реальные проекты улучшений. Вы найдёте точки роста с помощью анализа трендов, посчитаете экономический эффект, соберёте проектную команду и защитите проект перед экспертами компании.',
+    results: [
+      'узнаете методы поиска трендов, принципы генерации идей и визуализации информации',
+      'поймёте, как тренды влияют на развитие компании и почему важно считать экономическую эффективность',
+      'научитесь генерировать идеи, оценивать эффективность проектов, работать в команде и давать обратную связь',
+      'научитесь справляться со стрессом и аргументировать проект в условиях ограниченного времени'
+    ],
+    topics: [
+      'Модуль 1: проектный подход в работе руководителя, анализ трендов, экономическая эффективность проектов, взаимодействие с командой',
+      'Модуль 2: визуализация проектных идей, презентация и защита проектов',
+      'кросс-функциональное взаимодействие между дирекциями; обратная связь экспертов между модулями и на защите'
+    ],
+    tools: ['матрица рисков 5×5', 'метод 6-3-5', 'тест Белбина', 'роли по Адизесу', 'нейросети']
+  },
+  'Регулярный менеджмент: управленческая и личная эффективность руководителя': {
+    format: 'только очно · 5 дней в двух модулях (2 дня + 3 дня), между ними месяц заданий в чат-боте · есть самостоятельная работа (марафон заданий в чат-боте, практика внедрения на рабочих местах)',
+    learn: 'Уверенно управлять людьми и задачами каждый день: делегировать, ставить задачи, давать обратную связь, мотивировать и договариваться. А ещё — в формате бизнес-симуляции прожить перевозочный процесс и увидеть, как связаны производственные вертикали.',
+    results: [
+      'узнаете, как руководитель влияет на процессы в команде, лояльность сотрудников и их удержание',
+      'поймёте, как целеполагание и планирование влияют на личную эффективность',
+      'узнаете особенности основных производственных вертикалей и роль своего подразделения',
+      'научитесь применять управленческие инструменты в работе с сотрудниками',
+      'научитесь вести переговоры с руководством, коллегами и командой'
+    ],
+    topics: [
+      'функции руководителя и практики регулярного менеджмента',
+      'планирование в условиях многозадачности, управление личными целями',
+      'процесс перевозки и связь производственных вертикалей',
+      'развивающее управление командой',
+      'переговоры со смежными подразделениями и представление идей руководству',
+      'предотвращение увольнений'
+    ],
+    tools: ['делегирование', 'постановка задач', 'обратная связь', 'мотивация', 'бизнес-симуляция']
+  },
+  'Создавая впечатления: мастерство клиентского сервиса': {
+    format: 'очно или онлайн (первый тренинг) и онлайн (второй) · 4 дня (два двухдневных тренинга) в течение 3 недель · есть самостоятельная работа (материалы для самостоятельного изучения между тренингами)',
+    learn: 'Создавать у клиента приятное впечатление от общения с вами и вашим подразделением. Разберётесь, из чего оно складывается, как выстраивать сервисную культуру и как сохранять спокойствие в сложных ситуациях.',
+    results: [
+      'узнаете принципы формирования сервисной культуры в подразделении и организации',
+      'узнаете, какие факторы формируют впечатление клиента',
+      'научитесь использовать инструменты ненасильственного общения, понимать свои эмоции и эмоции клиента',
+      'научитесь применять на практике ценности и стандарты, создающие сервисную среду'
+    ],
+    topics: [
+      'сервис и факторы клиентского впечатления',
+      'стандарты и принципы сервиса',
+      'аутентичная коммуникация и её уровни',
+      'роль эмоций в общении и принципы ассертивного поведения',
+      'эффективное поведение в негативно окрашенных ситуациях',
+      'практикум: типовые ситуации и нетиповые решения'
+    ],
+    tools: ['клиентоориентированность', 'сервисная культура', 'эмпатия', 'аутентичная коммуникация', 'стандарты сервиса']
+  },
+  'Коммуникация и личная эффективность в управлении персоналом': {
+    format: 'очно · 4 дня (четыре однодневных тренинга)',
+    learn: 'Работать с людьми без выгорания: беречь свои силы, управлять эмоциями, понимать, что мотивирует сотрудников. В программе — и привлечение сотрудников, и удержание тех, кто уже в команде.',
+    results: [
+      'научитесь планировать задачи и распределять ресурсы при высокой нагрузке',
+      'освоите техники управления стрессом для себя и сотрудников',
+      'научитесь выявлять мотивы сотрудников и применять нематериальное стимулирование',
+      'научитесь выстраивать коммуникацию на основе ценностей компании и потребностей кандидатов'
+    ],
+    topics: [
+      'Ресурсное состояние: работа с людьми без выгорания',
+      'Эмоциональный интеллект и мотивация в управлении персоналом',
+      'Найм как переговоры: убеждение и привлечение',
+      'Предотвращение увольнений: диагностика, профилактика, «разговор в дверях»'
+    ],
+    tools: ['стресс-менеджмент', 'профилактика выгорания', 'нематериальная мотивация', 'удержание персонала', 'выходное интервью']
+  },
+  'Управление задачами': {
+    format: 'очно · 2 дня (два однодневных тренинга)',
+    learn: 'Доводить задачи до результата: уточнять постановку, работать с информацией, принимать решения, делегировать, контролировать и грамотно отчитываться.',
+    results: [
+      'научитесь работать с информацией: оценивать риски, принимать решения, использовать алгоритм решения задач',
+      'освоите функции управленческого цикла: целеполагание, мотивацию, обратную связь и контроль, делегирование',
+      'освоите ситуационный подход к управлению',
+      'узнаете, как распределять ответственность при кросс-функциональной задаче',
+      'узнаете, как грамотно составить отчёт о выполнении задачи'
+    ],
+    topics: [
+      'Анализ и уточнение задачи: работа с информацией, сбор данных («6 вопросов»), виды решений, оценка альтернатив и рисков',
+      'Организация выполнения задачи: делегирование, виды контроля, отчёт и его визуализация'
+    ],
+    tools: ['управленческий цикл', 'делегирование', 'принятие решений', 'ситуационный подход', 'отчётность']
+  },
+  'Стратегическая аналитика': {
+    format: 'очно · 3 дня (2 дня + 1 день) · есть самостоятельная работа (между тренингами и материалы для самостоятельного изучения)',
+    learn: 'Смотреть вперёд: анализировать рынок и тренды, оценивать конкурентов и строить сценарии развития. В программе — практика форсайт-сессии.',
+    results: [
+      'освоите методы и инструменты стратегического анализа',
+      'узнаете, как работать с глобальными и отраслевыми тенденциями',
+      'познакомитесь с инструментами форсайт-сессии'
+    ],
+    topics: [
+      'этапы развития стратегического менеджмента',
+      'анализ трендов и внешней среды',
+      'тенденции в отраслевой аналитике, анализ отраслевой цепочки',
+      'отработка инструментов на практике (в том числе с ИИ-сервисами)'
+    ],
+    tools: ['SWOT и PESTEL', 'пять сил Портера', 'сценарное планирование', 'форсайт-сессия', 'метод Делфи']
+  },
+  'Инструменты бизнес-аналитики': {
+    format: 'очно · 4 дня (3 дня + 1 день) · есть самостоятельная работа (между тренингами и материалы для самостоятельного изучения)',
+    learn: 'Собирать данные и превращать их в выводы, на которые можно опереться при принятии решений. А ещё — организовать аналитическую работу в своём подразделении.',
+    results: [
+      'освоите основные инструменты бизнес-анализа',
+      'научитесь анализировать информацию с использованием основных стратегических подходов',
+      'научитесь организовывать прогнозирование и аналитическую работу в подразделении'
+    ],
+    topics: [
+      'методы сбора данных',
+      'качественные и количественные методы анализа',
+      'основы BABOK',
+      'ИИ в анализе данных',
+      'как подобрать аналитика: собеседование и оценка'
+    ],
+    tools: ['BABOK', 'качественные методы', 'количественные методы', 'сценарное планирование', 'ИИ']
+  },
+  'Визуализация и презентация данных': {
+    format: 'очно · 3 дня (2 дня + 1 день) · есть самостоятельная работа (между тренингами и материалы для самостоятельного изучения)',
+    learn: 'Превращать сухие цифры в понятные графики и отчёты и убедительно презентовать результаты анализа тем, кто принимает решения.',
+    results: [
+      'научитесь анализировать информацию по стандартам бизнес-коммуникации и визуализации данных',
+      'узнаете основы аргументации и логики в работе с информацией, научитесь распознавать типичные уловки',
+      'узнаете правила наглядной визуализации данных на слайдах'
+    ],
+    topics: [
+      'основы визуализации и интерпретации данных',
+      'возможности Excel и PowerPoint',
+      'правила работы с табличными данными',
+      'типы диаграмм и использование цвета в отчётах',
+      'постановка технического задания на отчёт, типы стейкхолдеров'
+    ],
+    tools: ['Excel', 'PowerPoint', 'типы диаграмм', 'тепловая карта', 'F-паттерн']
+  }
+};
+// ============ ТРАЕКТОРИИ ПРОГРАММ (только СкилЛаб) ============
+const PROGRAM_TRAJECTORIES = {
+  'Основы критического мышления': 'Мышление',
+  'Системное мышление в управленческой деятельности': 'Мышление',
+  'Креативное мышление': 'Мышление',
+  'Эмоциональный интеллект': 'Жизнестойкость',
+  'Бережная самоорганизация': 'Жизнестойкость',
+  'Компас антихрупкости. Внутренние опоры руководителя в условиях неопределенности': 'Жизнестойкость',
+  'Тайм-менеджмент для руководителей': 'Жизнестойкость',
+  'Благополучие сотрудников как точка роста эффективности и удовлетворенности в компании': 'Управленческое мастерство',
+  'Основы деловой этики': 'Управленческое мастерство',
+  'Технология разработки решений (дизайн-мышление)': 'Проектное управление',
+  'Мастерство управления проектами: от идеи до реализации': 'Проектное управление',
+  'Искусство публичных выступлений: вдохновляй, убеждай, веди': 'Коммуникация',
+  'Мастерство совещаний: ключ к результативности команды и авторитету руководителя': 'Коммуникация',
+  'Переговоры: технологии успешной коммуникации': 'Коммуникация',
+  'Презентация, которая работает: структура, дизайн, наполнение': 'Коммуникация',
+  'Трудные диалоги: от эмоций к конструктивной коммуникации': 'Коммуникация',
+  'Управление конфликтами': 'Коммуникация',
+  'Стратегическая аналитика': 'Аналитика и метрики для руководителей',
+  'Инструменты бизнес-аналитики': 'Аналитика и метрики для руководителей',
+  'Визуализация и презентация данных': 'Аналитика и метрики для руководителей'
+};
+
+function getProgramTrajectory(name) {
+  return PROGRAM_TRAJECTORIES[name] || null;
+}
+
+function getProgramFormats(name) {
+  for (const [fmt, list] of Object.entries(FORMATS)) {
+    if (list.includes(name)) return [fmt];
+  }
+  return ['СкилЛаб'];
+}
+
+
+// Presentation-only palette mapping. Does not alter filtering, recommendations or swipe actions.
+const ORANGE_TRACK_IDS = new Set(['resilience', 'management', 'project']);
+function programColorClass(name, skillId) {
+  const format = getProgramFormats(name)[0];
+  if (format === 'ЛабПро') return 'program-blue';
+  if (format === 'СкилЛайт') return 'program-yellow';
+  if (format === 'СкилЛаб') {
+    const orange = skillId ? ORANGE_TRACK_IDS.has(skillId) :
+      SKILLS.some(skill => ORANGE_TRACK_IDS.has(skill.id) && skill.refinements.some(ref => ref.programs.includes(name)));
+    return orange ? 'program-orange' : 'program-purple';
+  }
+  return 'program-purple';
+}
+
+function getAllPrograms() {
+  const set = new Set();
+  SKILLS.forEach(s => s.refinements.forEach(r => r.programs.forEach(p => set.add(p))));
+  return [...set];
+}
+
+function getProgramDescription(programName) {
+  const detailed = PROGRAMS_DETAILED[programName];
+  if (detailed && detailed.learn) {
+    return detailed.learn;
+  }
+  return '';
+}
+
+// ============ ВАЛИДАЦИЯ ДИАГНОСТИКИ ============
+const ALLOWED_PHRASES = [
+  'не знаю',
+  'не уверен',
+  'не уверена',
+  'не решил',
+  'не решила',
+  'затрудняюсь',
+  'затрудняюсь ответить',
+  'пока не знаю',
+  'нет ответа',
+  'без ответа'
+];
+
+const SHORT_ALLOWED_WORDS = [
+  'it', 'hr', 'pr', 'qa', 'ux', 'ui', 'smm', 'crm', 'erp', 'kpi', 'okr'
+];
+
+const VOWELS = 'аеёиоуыэюяaeiouy';
+const CONSONANTS = 'бвгджзйклмнпрстфхцчшщbcdfghjklmnpqrstvwxz';
+
+function normalizeText(text) {
+  return (text || '').toLowerCase().trim();
+}
+
+function isAllowedPhrase(text) {
+  const t = normalizeText(text).replace(/[.,!?;:()]/g, '').replace(/\s+/g, ' ').trim();
+  return ALLOWED_PHRASES.includes(t);
+}
+
+function isRepeatedSameLetter(clean) {
+  if (clean.length < 2) return false;
+  const first = clean[0];
+  for (const ch of clean) {
+    if (ch !== first) return false;
+  }
+  return true;
+}
+
+function hasLongConsonantCluster(clean) {
+  let streak = 0;
+  for (const ch of clean) {
+    if (CONSONANTS.includes(ch)) {
+      streak++;
+      if (streak >= 4) return true;
+    } else {
+      streak = 0;
+    }
+  }
+  return false;
+}
+
+function isMeaningfulWord(word) {
+  const clean = word.replace(/[^a-zA-Zа-яА-ЯёЁ]/g, '');
+  if (!clean) return false;
+
+  if (SHORT_ALLOWED_WORDS.includes(clean.toLowerCase())) return true;
+
+  if (clean.length < 3) return false;
+  if (isRepeatedSameLetter(clean)) return false;
+
+  let hasVowel = false;
+  for (const ch of clean) {
+    if (VOWELS.includes(ch)) { hasVowel = true; break; }
+  }
+  if (!hasVowel) return false;
+
+  if (hasLongConsonantCluster(clean)) return false;
+
+  return true;
+}
+
+function isMeaningful(text) {
+  const t = normalizeText(text);
+  if (!t) return false;
+  if (isAllowedPhrase(t)) return true;
+  const words = t.split(/\s+/);
+  return words.some(w => isMeaningfulWord(w));
+}
+
+const HINT_TEXT = 'Напиши словами. Если пока не знаешь ответ, скажи об этом';
+
+// ============ СОСТОЯНИЕ ============
+const state = {
+  screen: 'cover',
+  user: { name: '', studied: null, ownRequest: '' },
+  studiedPrograms: [],
+  studiedUnsure: false,
+  formats: [],
+  filterDisabled: false,
+  selectedSkills: [],
+  skillAnswers: {},
+  recommendations: {},
+  currentSkillIdx: 0,
+  inventory: [],
+  archive: [],
+  catalogReturn: false
+};
+
+// ============ НАВИГАЦИЯ ============
+const STEP_ORDER = ['cover','diagnostics','format','skills','refinement','summary','correct','retry','final'];
+
+function go(screen) {
+  state.screen = screen;
+  render();
+}
+
+function render() {
+  const main = document.getElementById('main');
+  main.scrollTop = 0;
+  const screens = {
+    cover: renderCover,
+    diagnostics: renderDiagnostics,
+    studied: renderStudied,
+    format: renderFormat,
+    skills: renderSkills,
+    refinement: renderRefinement,
+    summary: renderSummary,
+    correct: renderCorrect,
+    retry: renderRetry,
+    final: renderFinal
+  };
+  main.innerHTML = '';
+  (screens[state.screen] || (() => { main.innerHTML = '<p>Экран не найден</p>'; }))();
+  updateProgress();
+  const heading = main.querySelector('h1');
+  if (heading) {
+    heading.setAttribute('tabindex', '-1');
+    heading.focus({preventScroll:true});
+  }
+}
+
+function updateProgress() {
+  const total = STEP_ORDER.length;
+  const idx = STEP_ORDER.indexOf(state.screen === 'studied' ? 'diagnostics' : state.screen);
+  const pct = idx < 0 ? 0 : Math.round((idx / (total - 1)) * 100);
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent = pct + '%';
+  document.getElementById('progressAccessible').setAttribute('aria-valuenow', String(pct));
+}
+
+// ============ ОФОРМЛЕНИЕ «АФИШИ» (только визуал, на логику не влияет) ============
+const FORMAT_POSTERS = {
+  'СкилЛаб':       { band: '#5C068C', accent: '#5C068C', word: '#FFFFFF', text: 'СКИЛЛАБ' },
+  'ЛабПро':        { band: '#385E9D', accent: '#385E9D', word: '#FFFFFF', text: 'ЛАБПРО' },
+  'Мастер Классы': { band: '#FF9E1B', accent: '#8A4B00', word: '#350451', text: 'МАСТЕР' },
+  'СкилЛайт':      { band: '#F4DA40', accent: '#350451', word: '#350451', text: 'СКИЛЛАЙТ' }
+};
+const SKILL_POSTERS = {
+  comm:       { band: '#5C068C', accent: '#5C068C', word: '#FFFFFF', text: 'ДИАЛОГ' },
+  thinking:   { band: '#385E9D', accent: '#385E9D', word: '#FFFFFF', text: 'МЫСЛЬ' },
+  resilience: { band: '#FF9E1B', accent: '#8A4B00', word: '#350451', text: 'РЕСУРС' },
+  management: { band: '#350451', accent: '#350451', word: '#FFFFFF', text: 'КОМАНДА' },
+  project:    { band: '#F4DA40', accent: '#350451', word: '#350451', text: 'ПРОЕКТ' },
+  analytics:  { band: '#244879', accent: '#244879', word: '#FFFFFF', text: 'ДАННЫЕ' },
+  service:    { band: '#C39BDB', accent: '#6A2E8F', word: '#350451', text: 'СЕРВИС' }
+};
+const DEFAULT_POSTER = { band: '#5C068C', accent: '#5C068C', word: '#FFFFFF', text: 'НАВЫК' };
+
+function posterVars(p, title) {
+  const tlen = Math.max(6, ...String(title || '').split(/[\s\-–]+/).map(w => w.length));
+  const len = p.two ? Math.max(...p.text.split(' ').map(w => w.length)) : p.text.length;
+  return `--band:${p.band};--accent:${p.accent};--word:${p.word};--len:${Math.max(4, len)};--tlen:${tlen}`;
+}
+// Неразрывный пробел после коротких слов (в, и, а, на…) и перед тире — без висячих предлогов в конце строки.
+function noHang(text) {
+  let t = String(text || '');
+  for (let i = 0; i < 2; i++) t = t.replace(/(^|[\s(«"])([а-яёА-ЯЁ]{1,2})\s+/g, '$1$2\u00A0');
+  return t.replace(/\s+—/g, '\u00A0—');
+}
+// Слово на полосе; у двухсловных названий («МАСТЕР КЛАСС») — в две колонки, чтобы шрифт был крупным.
+function posterWordHTML(p) {
+  return p.two ? p.text.split(' ').join('<br>') : p.text;
+}
+// Мягкие переносы в длинных словах описаний навыков (по правилам переноса):
+// браузер переносит слово по слогам только если оно не помещается в строку.
+const SOFT_HYPHENS = {
+  'договариваться': 'до-го-ва-ри-вать-ся', 'конструктивно': 'кон-струк-тив-но', 'обоснованные': 'обос-но-ван-ные',
+  'неопределенностью': 'не-опре-де-лен-но-стью', 'управленческие': 'управ-лен-че-ские', 'организовать': 'ор-га-ни-зо-вать',
+  'анализировать': 'ана-ли-зи-ро-вать', 'статистическими': 'ста-ти-сти-че-ски-ми', 'инструментами': 'ин-стру-мен-та-ми',
+  'инструменты': 'ин-стру-мен-ты', 'информацией': 'ин-фор-ма-ци-ей', 'справляться': 'справ-лять-ся',
+  'концентрированный': 'кон-цен-три-ро-ван-ный', 'функциональной': 'функ-ци-о-наль-ной', 'продуктивности': 'про-дук-тив-но-сти',
+  'прокачиваете': 'про-ка-чи-ва-е-те', 'специалиста': 'спе-ци-а-ли-ста', 'флагманские': 'флаг-ман-ские', 'комфортном': 'ком-форт-ном'
+};
+function softHyphens(text) {
+  return String(text || '').replace(/[А-Яа-яЁё]+/g, w => {
+    const h = SOFT_HYPHENS[w.toLowerCase()];
+    if (!h) return w;
+    const out = h.replace(/-/g, '\u00AD');
+    return w[0] === w[0].toUpperCase() ? out[0].toUpperCase() + out.slice(1) : out;
+  });
+}
+// Длина самого длинного неразрывного куска текста (с учётом неразрывных пробелов и мягких переносов).
+function longestChunk(text) {
+  return Math.max(...String(text || '').split(/[ \u00AD]/).map(w => w.length));
+}
+function posterBand(p) {
+  return `<span class="poster-band" aria-hidden="true"><span class="poster-word${p.two ? ' is-two' : ''}">${posterWordHTML(p)}</span></span>`;
+}
+function posterBadge(n) {
+  return `<span class="poster-badge" aria-hidden="true"><b>${n < 10 ? '0' + n : n}</b><small>${pluralPrograms(n)}</small></span>`;
+}
+function pluralPrograms(n) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'программа';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'программы';
+  return 'программ';
+}
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+function skillProgramCount(skill) {
+  const set = new Set();
+  skill.refinements.forEach(r => r.programs.forEach(p => set.add(p)));
+  return set.size;
+}
+function skillFormatsLabel(skill) {
+  const set = new Set();
+  skill.refinements.forEach(r => r.programs.forEach(p => getProgramFormats(p).forEach(f => set.add(f))));
+  return ['СкилЛаб', 'ЛабПро', 'Мастер Классы', 'СкилЛайт'].filter(f => set.has(f)).join(' · ');
+}
+function formatProgramCount(fmt) {
+  return getAllPrograms().filter(p => getProgramFormats(p).includes(fmt)).length;
+}
+const ICONS = {
+  heart: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></svg>',
+  file: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H6v18h12V7zM14 3v4h4M12 11v6M9 14l3 3 3-3"/></svg>',
+  book: '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h14v15H6a2 2 0 0 0-2 2zM4 20a2 2 0 0 0 2 2h14v-4"/></svg>',
+  grid: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg>'
+};
+
+// ============ СООБЩЕНИЯ ОБ ОШИБКАХ (вместо alert) ============
+// Сообщение появляется рядом с вопросом, читается экранным диктором (role="alert")
+// и связано с группой вариантов через aria-describedby. Исчезает, как только человек делает выбор.
+function showInlineError(targetId, text) {
+  const target = document.getElementById(targetId);
+  if (!target) { alert(text); return; }
+  const id = targetId + 'Error';
+  let box = document.getElementById(id);
+  if (!box) {
+    box = document.createElement('div');
+    box.id = id;
+    box.className = 'form-error';
+    box.setAttribute('role', 'alert');
+    // На экране навыков сообщение встаёт в строку с кнопкой «Далее», чтобы не сдвигать афиши.
+    const actions = target.closest('.screen') && target.closest('.screen').querySelector(':scope > .actions');
+    if (targetId === 'skillsOptions' && actions) actions.prepend(box);
+    else target.after(box);
+  }
+  box.textContent = '';
+  requestAnimationFrame(() => { box.textContent = text; });
+  target.setAttribute('aria-describedby', id);
+  if (box.scrollIntoView) box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+function clearInlineError(targetId) {
+  const box = document.getElementById(targetId + 'Error');
+  if (box) box.remove();
+  const target = document.getElementById(targetId);
+  if (target) target.removeAttribute('aria-describedby');
+}
+
+// ============ ЭКРАНЫ ============
+function renderCover() {
+  const total = getAllPrograms().length;
+  const cover = { band: '#5C068C', accent: '#5C068C', word: '#FFFFFF', text: 'НАВИГАТОР' };
+  document.getElementById('main').innerHTML = `
+    <div class="screen active cover-screen">
+      <div class="cover-poster" style="${posterVars(cover, 'ПРОГРАММ')}">
+        ${posterBand(cover)}
+        <div class="cover-body">
+          <span class="poster-kicker">навигатор подбора обучения</span>
+          <h1>Каталог <span>программ</span></h1>
+          <p>Добро пожаловать в навигатор подбора обучения. Ответьте на несколько вопросов — и мы подберём программы, которые подойдут именно вам.</p>
+          <button class="btn-primary" onclick="go('diagnostics')">Открыть каталог программ</button>
+        </div>
+        ${posterBadge(total)}
+      </div>
+    </div>
+  `;
+}
+
+function renderDiagnostics() {
+  const showStudied = (state.user.studied === true || state.user.studied === 'unsure');
+  document.getElementById('main').innerHTML = `
+    <div class="screen active diag-screen">
+     <div class="diag-layout">
+      <div class="diag-form">
+      <h1>Диагностика</h1>
+      <p class="muted">Заполните данные о себе. Все поля обязательны.</p>
+
+      <label id="lbl-name"><span>Как вас зовут? *</span>
+        <input type="text" id="f-name" autocomplete="given-name" aria-describedby="nameError" value="${state.user.name}" onblur="validateField('lbl-name','f-name')">
+        <div class="field-hint" id="nameError">Напишите свое имя</div>
+      </label>
+
+      <div class="diag-question" id="studiedQuestion">Проходили ли вы ранее обучение на программах центра? *</div>
+      <div class="options options-row" id="studiedOptions" role="group" aria-labelledby="studiedQuestion">
+        <button class="option ${state.user.studied === true ? 'selected' : ''}" onclick="setStudied(true)">Да</button>
+        <button class="option ${state.user.studied === false ? 'selected' : ''}" onclick="setStudied(false)">Нет</button>
+        <button class="option ${state.user.studied === 'unsure' ? 'selected' : ''}" onclick="setStudied('unsure')">Не уверен(а)</button>
+      </div>
+
+      <div id="studiedProgramsBlock" style="display: ${showStudied ? 'block' : 'none'};">
+        ${renderStudiedProgramsBlockHTML()}
+      </div>
+      <button class="btn-primary diag-next" onclick="submitDiagnostics()">Далее <span aria-hidden="true">→</span></button>
+      </div>
+      <aside class="poster diag-poster" aria-hidden="true" style="${posterVars({ band: '#FF9E1B', accent: '#5C068C', word: '#350451', text: 'ЗНАКОМСТВО' }, 'ПОДБОРКЕ')}">
+        ${posterBand({ band: '#FF9E1B', accent: '#5C068C', word: '#350451', text: 'ЗНАКОМСТВО' })}
+        <span class="poster-body">
+          <span class="poster-kicker">как это работает</span>
+          <span class="poster-title">5 шагов<br>к подборке</span>
+          <span class="diag-steps">
+            <span><b>01</b>О вас</span>
+            <span><b>02</b>Формат обучения</span>
+            <span><b>03</b>Навыки</span>
+            <span><b>04</b>Уточнение запроса</span>
+            <span><b>05</b>Ваша подборка</span>
+          </span>
+        </span>
+      </aside>
+     </div>
+    </div>
+  `;
+}
+
+function validateField(labelId, inputId) {
+  const label = document.getElementById(labelId);
+  const input = document.getElementById(inputId);
+  if (!label || !input) return;
+  const val = input.value;
+  if (!val.trim()) {
+    label.classList.remove('invalid');
+    input.setAttribute('aria-invalid','false');
+    return;
+  }
+  if (isMeaningful(val)) label.classList.remove('invalid');
+  else label.classList.add('invalid');
+  input.setAttribute('aria-invalid', String(label.classList.contains('invalid')));
+}
+
+function renderStudiedProgramsBlockHTML() {
+  const all = getAllPrograms().slice().sort((a, b) => a.localeCompare(b, 'ru'));
+  return `
+    <p class="muted">Выберите программы, которые вы уже проходили:</p>
+    <div class="options">
+      ${all.map(p => `
+        <button class="option ${state.studiedPrograms.includes(p) ? 'selected' : ''}" onclick="toggleStudiedProgram(this, ${JSON.stringify(p).replace(/"/g, '&quot;')})">${p}</button>
+      `).join('')}
+    </div>
+    <button class="btn-secondary ${state.studiedUnsure ? 'selected' : ''}" onclick="diagNotRemember()">Не помню</button>
+    <button class="btn-ghost" onclick="diagSkip()">Пропустить</button>
+  `;
+}
+
+function setStudied(v) {
+  syncFieldsToState();
+  state.user.studied = v;
+
+  const values = [true, false, 'unsure'];
+  document.querySelectorAll('#studiedOptions .option').forEach((el, i) => {
+    el.classList.toggle('selected', values[i] === v);
+  });
+
+  const block = document.getElementById('studiedProgramsBlock');
+  block.style.display = (v === true || v === 'unsure') ? 'block' : 'none';
+}
+
+function syncFieldsToState() {
+  const el = document.getElementById('f-name');
+  if (el) state.user.name = el.value;
+}
+
+function toggleStudiedProgram(btn, p) {
+  const idx = state.studiedPrograms.indexOf(p);
+  if (idx >= 0) state.studiedPrograms.splice(idx, 1);
+  else state.studiedPrograms.push(p);
+  state.studiedUnsure = false;
+  btn.classList.toggle('selected');
+  const unsureBtn = document.querySelector('#studiedProgramsBlock .btn-secondary');
+  if (unsureBtn) unsureBtn.classList.remove('selected');
+}
+
+function diagNotRemember() {
+  const wasUnsure = state.studiedUnsure;
+  state.studiedPrograms = [];
+  state.studiedUnsure = !wasUnsure;
+
+  document.querySelectorAll('#studiedProgramsBlock .option').forEach(el => el.classList.remove('selected'));
+
+  const unsureBtn = document.querySelector('#studiedProgramsBlock .btn-secondary');
+  if (unsureBtn) {
+    unsureBtn.classList.toggle('selected', state.studiedUnsure);
+  }
+}
+
+function diagSkip() {
+  syncFieldsToState();
+  const u = state.user;
+
+  const nameLabel = document.getElementById('lbl-name');
+  let hasError = false;
+  if (!u.name.trim() || !isMeaningful(u.name)) {
+    if (nameLabel) nameLabel.classList.add('invalid');
+    hasError = true;
+  } else {
+    if (nameLabel) nameLabel.classList.remove('invalid');
+  }
+
+  const nameInput = document.getElementById('f-name');
+  if (nameInput) nameInput.setAttribute('aria-invalid', String(hasError));
+  if (hasError) {
+    const firstInvalid = document.querySelector('label.invalid');
+    if (firstInvalid) firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  if (u.studied === null) {
+    showInlineError('studiedOptions', 'Пожалуйста, ответьте на вопрос про ранее пройденное обучение.');
+    return;
+  }
+
+  go('format');
+}
+
+function submitDiagnostics() {
+  syncFieldsToState();
+  const u = state.user;
+
+  const nameLabel = document.getElementById('lbl-name');
+  let hasError = false;
+  if (!u.name.trim() || !isMeaningful(u.name)) {
+    if (nameLabel) nameLabel.classList.add('invalid');
+    hasError = true;
+  } else {
+    if (nameLabel) nameLabel.classList.remove('invalid');
+  }
+
+  if (hasError) {
+    const firstInvalid = document.querySelector('label.invalid');
+    if (firstInvalid) firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+
+  if (u.studied === null) {
+    showInlineError('studiedOptions', 'Пожалуйста, ответьте на вопрос про ранее пройденное обучение.');
+    return;
+  }
+
+  // Пройденные программы — отдельный экран со страницами на всех устройствах (на телефоне длинный список не помещался в экран).
+  if (u.studied === true || u.studied === 'unsure') {
+    studiedPage = 0;
+    go('studied');
+    return;
+  }
+
+  go('format');
+}
+
+// ============ ПРОЙДЕННЫЕ ПРОГРАММЫ (десктоп, бенто) ============
+let studiedPage = 0;
+
+function isDesktopLayout() {
+  return window.matchMedia('(min-width: 1100px)').matches;
+}
+
+function studiedPerPage() {
+  // Телефон: одна колонка, столько плиток, сколько помещается по высоте.
+  if (window.innerWidth < 700) return Math.max(3, Math.min(9, Math.floor((window.innerHeight - 430) / 72)));
+  // Планшет: две колонки.
+  if (window.innerWidth < 1100) return window.innerHeight >= 900 ? 14 : 8;
+  return window.innerHeight >= 780 ? 15 : 10;
+}
+
+function studiedAllPrograms() {
+  return getAllPrograms().slice().sort((a, b) => a.localeCompare(b, 'ru'));
+}
+
+function studiedPageItems(page) {
+  const perPage = studiedPerPage();
+  return studiedAllPrograms().slice(page * perPage, (page + 1) * perPage);
+}
+
+function studiedPageCount() {
+  return Math.max(1, Math.ceil(studiedAllPrograms().length / studiedPerPage()));
+}
+
+function studiedTilesHTML(items) {
+  return items.map(p => `
+    <button type="button" class="option studied-tile ${p.length > 50 ? 'is-wide' : ''} ${state.studiedPrograms.includes(p) ? 'selected' : ''}" aria-pressed="${state.studiedPrograms.includes(p)}" onclick="studiedToggle(this, ${JSON.stringify(p).replace(/"/g, '&quot;')})">${p}</button>
+  `).join('');
+}
+
+function studiedPageLabel(page, items) {
+  const range = items.length ? `${items[0][0].toUpperCase()}–${items[items.length - 1][0].toUpperCase()}` : '';
+  return `Страница ${page + 1} из ${studiedPageCount()} · ${range}`;
+}
+
+function renderStudied() {
+  const pages = studiedPageCount();
+  if (studiedPage > pages - 1) studiedPage = pages - 1;
+  if (studiedPage < 0) studiedPage = 0;
+  const items = studiedPageItems(studiedPage);
+  const count = state.studiedPrograms.length;
+
+  document.getElementById('main').innerHTML = `
+    <div class="screen active studied-screen">
+      <h1>Какие программы вы уже проходили?</h1>
+      <p class="muted">Отметьте все программы, которые помните. Листайте страницы стрелками или свайпом. Если не помните — нажмите «Не помню».</p>
+      <div class="studied-pager">
+        <button type="button" class="studied-arrow" id="studiedPrev" aria-label="Предыдущая страница" onclick="studiedGoPage(-1)" ${studiedPage === 0 ? 'disabled' : ''}>‹</button>
+        <span class="studied-page-label" id="studiedPageLabel" aria-live="polite">${studiedPageLabel(studiedPage, items)}</span>
+        <button type="button" class="studied-arrow" id="studiedNext" aria-label="Следующая страница" onclick="studiedGoPage(1)" ${studiedPage >= pages - 1 ? 'disabled' : ''}>›</button>
+        <span class="studied-count" id="studiedCount">${count ? `Выбрано: ${count}` : ''}</span>
+      </div>
+      <div class="studied-grid" id="studiedGrid"></div>
+      <div class="studied-actions">
+        <button type="button" class="btn-ghost" onclick="go('diagnostics')">Назад</button>
+        <button type="button" class="btn-secondary ${state.studiedUnsure ? 'selected' : ''}" id="studiedUnsureBtn" onclick="studiedNotRemember()">Не помню</button>
+        <button type="button" class="btn-primary" onclick="studiedNext()">Далее</button>
+      </div>
+    </div>
+  `;
+
+  // Same grid height on every page, so the buttons below never jump.
+  const grid = document.getElementById('studiedGrid');
+  let maxH = 0;
+  for (let i = 0; i < pages; i++) {
+    grid.innerHTML = studiedTilesHTML(studiedPageItems(i));
+    maxH = Math.max(maxH, grid.offsetHeight);
+  }
+  grid.style.minHeight = maxH + 'px';
+  grid.innerHTML = studiedTilesHTML(items);
+}
+
+function studiedGoPage(delta) {
+  const pages = studiedPageCount();
+  const next = Math.min(pages - 1, Math.max(0, studiedPage + delta));
+  if (next === studiedPage) return;
+  studiedPage = next;
+  const items = studiedPageItems(studiedPage);
+  // Only the tiles, the page label and the arrows change; the screen itself stays in place.
+  document.getElementById('studiedGrid').innerHTML = studiedTilesHTML(items);
+  document.getElementById('studiedPageLabel').textContent = studiedPageLabel(studiedPage, items);
+  document.getElementById('studiedPrev').disabled = studiedPage === 0;
+  document.getElementById('studiedNext').disabled = studiedPage >= pages - 1;
+}
+
+// «Далее»: next page of programs; only on the last page go to the format screen.
+function studiedNext() {
+  if (studiedPage < studiedPageCount() - 1) {
+    studiedGoPage(1);
+    return;
+  }
+  go('format');
+}
+
+function studiedToggle(btn, p) {
+  const idx = state.studiedPrograms.indexOf(p);
+  if (idx >= 0) state.studiedPrograms.splice(idx, 1);
+  else state.studiedPrograms.push(p);
+  state.studiedUnsure = false;
+  const on = state.studiedPrograms.includes(p);
+  btn.classList.toggle('selected', on);
+  btn.setAttribute('aria-pressed', String(on));
+  const unsureBtn = document.getElementById('studiedUnsureBtn');
+  if (unsureBtn) unsureBtn.classList.remove('selected');
+  const countEl = document.getElementById('studiedCount');
+  if (countEl) countEl.textContent = state.studiedPrograms.length ? `Выбрано: ${state.studiedPrograms.length}` : '';
+}
+
+function studiedNotRemember() {
+  // «Не помню»: сбрасываем отмеченные программы и сразу переходим к выбору формата.
+  state.studiedPrograms = [];
+  state.studiedUnsure = true;
+  go('format');
+}
+
+// ============ ФОРМАТ ============
+function renderFormat() {
+    const formats = [
+    { id: 'СкилЛаб', desc: 'флагманские программы, где вы прокачиваете «навыки на все случаи жизни»: мыслить по-новому, управлять собой, общаться и руководить.' },
+    { id: 'ЛабПро', desc: 'программы, которые развивают вас как специалиста именно в вашей функциональной роли: тех навыков, что нужны для ваших рабочих задач, командной работы и общей продуктивности.' },
+    { id: 'Мастер Классы', desc: 'концентрированный опыт экспертов в компактном формате: без воды, только то, что можно сразу применить на практике. Идеально подходят для Слётов Молодёжи.' },
+    { id: 'СкилЛайт', desc: 'онлайн-курсы, которые вы можете проходить в любое время в комфортном для вас темпе.' }
+  ];
+  const canProceed = state.formats.length > 0;
+  document.getElementById('main').innerHTML = `
+    <div class="screen active">
+      <h1>Какой формат вам подойдёт?</h1>
+      <p class="muted">${noHang('Выберите один или несколько форматов или пропустите этот шаг. Данные диагностики сохранены — изменить их можно кнопкой «Пройти диагностику заново».')}</p>
+      <div class="options" id="formatOptions">
+        ${formats.map(f => {
+          const p = FORMAT_POSTERS[f.id] || DEFAULT_POSTER;
+          const n = formatProgramCount(f.id);
+          return `
+          <button class="option poster ${state.formats.includes(f.id) ? 'selected' : ''}" style="${posterVars(p, f.id)};--dlen:${Math.max(8, ...formats.map(x => longestChunk(softHyphens(noHang(x.desc)))))}" data-format="${f.id}" onclick="toggleFormat(this, '${f.id}')">
+            ${posterBand(p)}
+            <span class="poster-body">
+              <span class="poster-title">${f.id}</span>
+              <span class="poster-kicker">формат обучения</span>
+              <span class="poster-desc">${softHyphens(noHang(f.desc.charAt(0).toUpperCase() + f.desc.slice(1)))}</span>
+              <span class="poster-meta"><b>${n} ${pluralPrograms(n)}</b></span>
+            </span>
+            <span class="poster-badge" aria-hidden="true"></span>
+          </button>
+        `;}).join('')}
+      </div>
+      <div class="actions">
+        <button class="btn-ghost" onclick="skipFormat()">Пропустить</button>
+        <button class="btn-ghost" onclick="go('diagnostics')">Пройти диагностику заново</button>
+        <button class="btn-primary" id="formatNextBtn" onclick="go('skills')" ${!canProceed ? 'disabled' : ''}>Далее</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleFormat(btn, f) {
+  const idx = state.formats.indexOf(f);
+  if (idx >= 0) state.formats.splice(idx, 1);
+  else state.formats.push(f);
+  btn.classList.toggle('selected');
+
+  const nextBtn = document.getElementById('formatNextBtn');
+  if (nextBtn) nextBtn.disabled = state.formats.length === 0;
+}
+
+function skipFormat() {
+  state.formats = [];
+  go('skills');
+}
+
+// ============ ВЫБОР НАВЫКОВ ============
+function renderSkills() {
+  document.getElementById('main').innerHTML = `
+    <div class="screen active">
+      <h1>Что вы хотите изучить?</h1>
+      <p class="muted">Выберите один или несколько ключевых навыков. Можно также ввести свой запрос.</p>
+      <div class="options" id="skillsOptions">
+        ${SKILLS.map(s => {
+          const p = SKILL_POSTERS[s.id] || DEFAULT_POSTER;
+          const n = skillProgramCount(s);
+          const dirs = s.refinements.length;
+          const desc = s.description || '';
+          return `
+          <button class="option poster ${state.selectedSkills.includes(s.id) ? 'selected' : ''}" style="${posterVars(p, s.name)};--dlen:${Math.max(8, ...SKILLS.map(x => longestChunk(softHyphens(noHang(x.description || '')))))}" onclick="toggleSkill(this, '${s.id}')">
+            ${posterBand(p)}
+            <span class="poster-body">
+              <span class="poster-title option-title">${s.name}</span>
+              <span class="poster-desc option-subtitle">${softHyphens(noHang(desc.charAt(0).toUpperCase() + desc.slice(1)))}.</span>
+              <span class="poster-ghost" aria-hidden="true">НА<br>ВЫ<br>КИ</span>
+            </span>
+            ${posterBadge(n)}
+          </button>
+        `;}).join('')}
+        <label class="poster-custom"><span>Свой запрос</span><small>Не нашли нужную афишу? Опишите задачу своими словами.</small><textarea id="f-own" placeholder="Например: хочу лучше регулировать эмоции, научиться работать с данными...">${state.user.ownRequest || ''}</textarea></label>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" onclick="submitSkills()">Далее</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleSkill(btn, id) {
+  const idx = state.selectedSkills.indexOf(id);
+  if (idx >= 0) state.selectedSkills.splice(idx, 1);
+  else state.selectedSkills.push(id);
+  btn.classList.toggle('selected');
+}
+
+function submitSkills() {
+  state.user.ownRequest = document.getElementById('f-own').value.trim();
+  if (state.selectedSkills.length === 0 && !state.user.ownRequest) {
+    showInlineError('skillsOptions', 'Выберите хотя бы один навык или введите свой запрос.');
+    return;
+  }
+  if (state.selectedSkills.length === 0) {
+    document.getElementById('main').innerHTML = `
+      <div class="screen active">
+        <h1>Какой интересный запрос!</h1>
+        <p>Давайте обсудим его подробнее.</p>
+        <p class="muted">Если хотите, вернитесь к выбору навыков и выберите конкретные направления — так рекомендации будут точнее.</p>
+        <div class="actions">
+          <button class="btn-secondary" onclick="go('skills')">Назад к выбору навыков</button>
+          <button class="btn-primary" onclick="go('final')">Перейти к контактам</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+  state.currentSkillIdx = 0;
+  go('refinement');
+}
+
+// ============ УТОЧНЕНИЕ ============
+function renderRefinement() {
+  const skill = SKILLS.find(s => s.id === state.selectedSkills[state.currentSkillIdx]);
+  if (!skill) { go('summary'); return; }
+  const selected = state.skillAnswers[skill.id] || [];
+  const canProceed = selected.length > 0;
+
+  document.getElementById('main').innerHTML = `
+    <div class="screen active refine-screen">
+      <div class="refine-layout">
+        <div class="poster refine-poster" style="${posterVars(SKILL_POSTERS[skill.id] || DEFAULT_POSTER, skill.name)}">
+          ${posterBand(SKILL_POSTERS[skill.id] || DEFAULT_POSTER)}
+          <div class="poster-body">
+            <p class="poster-kicker">Навык ${state.currentSkillIdx + 1} из ${state.selectedSkills.length}</p>
+            <h1>${skill.name}</h1>
+            <span class="poster-desc">${(skill.description || '').charAt(0).toUpperCase() + (skill.description || '').slice(1)}</span>
+            <span class="poster-ghost" aria-hidden="true">НА<br>ВЫ<br>КИ</span>
+          </div>
+          ${posterBadge(skillProgramCount(skill))}
+        </div>
+        <div class="refine-main">
+          <p>Что вам интереснее? Можно выбрать несколько вариантов.</p>
+          <div class="options" id="refinementOptions">
+            ${skill.refinements.map((r, i) => `
+              <button class="option ${selected.includes(r.id) ? 'selected' : ''}" onclick="toggleRefinement(this, '${skill.id}','${r.id}')"><span class="opt-num" aria-hidden="true">${i < 9 ? '0' : ''}${i + 1}</span>${r.text.charAt(0).toUpperCase() + r.text.slice(1)}</button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" id="refinementNextBtn" onclick="submitRefinement()" ${!canProceed ? 'disabled' : ''}>Далее</button>
+      </div>
+    </div>
+  `;
+}
+
+function toggleRefinement(btn, skillId, refId) {
+  if (!state.skillAnswers[skillId]) state.skillAnswers[skillId] = [];
+  const arr = state.skillAnswers[skillId];
+  const idx = arr.indexOf(refId);
+  if (idx >= 0) arr.splice(idx, 1);
+  else arr.push(refId);
+  btn.classList.toggle('selected');
+
+  const nextBtn = document.getElementById('refinementNextBtn');
+  if (nextBtn) nextBtn.disabled = arr.length === 0;
+}
+
+function submitRefinement() {
+  buildRecommendationsForCurrentSkill();
+  state.currentSkillIdx++;
+  if (state.currentSkillIdx >= state.selectedSkills.length) {
+    go('summary');
+  } else {
+    go('refinement');
+  }
+}
+
+// ============ ФИЛЬТРАЦИЯ ============
+function buildRecommendationsForCurrentSkill() {
+  const skill = SKILLS.find(s => s.id === state.selectedSkills[state.currentSkillIdx]);
+  const refIds = state.skillAnswers[skill.id] || [];
+  const programs = [];
+  const useFilter = state.formats.length > 0 && !state.filterDisabled;
+
+  refIds.forEach(refId => {
+    const ref = skill.refinements.find(r => r.id === refId);
+    if (!ref) return;
+    ref.programs.forEach(p => {
+      if (state.studiedPrograms.includes(p)) return;
+      const formats = getProgramFormats(p);
+      if (useFilter) {
+        const matches = formats.some(f => state.formats.includes(f));
+        if (!matches) return;
+      }
+      programs.push({
+        program: p,
+        format: formats,
+        skillId: skill.id,
+        refinementId: refId,
+        refinementText: ref.text
+      });
+    });
+  });
+  state.recommendations[skill.id] = programs;
+}
+
+// ============ ИТОГ ============
+function renderSummary() {
+  document.getElementById('main').innerHTML = `
+    <div class="screen active">
+      <h1>Итог</h1>
+      <p class="muted">Ваши рекомендации по навыкам. Отметьте программы кнопками «Интересно» или «Подумать».</p>
+      <div class="tabs" id="tabs">
+        ${state.selectedSkills.map((sid, i) => {
+          const s = SKILLS.find(x => x.id === sid);
+          return `<button type="button" class="tab ${i === 0 ? 'active' : ''}" aria-pressed="${i === 0}" onclick="switchTab(${i})">${s.name}</button>`;
+        }).join('')}
+      </div>
+      <div id="tabContent"></div>
+      <div class="actions">
+        <button class="btn-primary" onclick="summaryNext()">Далее</button>
+      </div>
+    </div>
+  `;
+  switchTab(0);
+}
+
+// «Далее» on the summary: open the next selected skill's tab; only after the last one go to «Вам подошла рекомендация?».
+function summaryNext() {
+  const tabs = [...document.querySelectorAll('#tabs .tab')];
+  const current = tabs.findIndex(t => t.classList.contains('active'));
+  if (current >= 0 && current < tabs.length - 1) {
+    switchTab(current + 1);
+    tabs[current + 1].focus({ preventScroll: true });
+    return;
+  }
+  go('correct');
+}
+
+function switchTab(i) {
+  document.querySelectorAll('.tab').forEach((t, idx) => { t.classList.toggle('active', idx === i); t.setAttribute('aria-pressed', String(idx === i)); });
+  const sid = state.selectedSkills[i];
+  const skill = SKILLS.find(x => x.id === sid);
+  const recs = state.recommendations[sid] || [];
+  const multiRef = (state.skillAnswers[sid] || []).length > 1;
+  const content = document.getElementById('tabContent');
+  if (recs.length === 0) {
+    const filterActive = state.formats.length > 0 && !state.filterDisabled;
+    if (filterActive) {
+      content.innerHTML = `
+        <div class="note">В данном формате нет этого навыка.</div>
+        <p>Какой интересный запрос! Давайте обсудим его подробнее. Нажмите «Далее».</p>
+      `;
+    } else {
+      content.innerHTML = '<p class="muted">Пока нет рекомендаций по этому навыку.</p>';
+    }
+    return;
+  }
+  content.innerHTML = `
+    <div class="cards">
+      ${recs.map((r, idx) => {
+        const isLiked = state.inventory.some(x => x.program === r.program && x.skillId === skill.id);
+        const isArchived = state.archive.some(x => x.program === r.program && x.skillId === skill.id);
+        return `
+                    <div class="card card-swipeable ${programColorClass(r.program, skill.id)} ${isLiked ? 'liked' : ''} ${isArchived ? 'archived' : ''}"
+               data-skill-id="${sid}"
+               data-rec-idx="${idx}">
+            <div class="card-inner" style="cursor:pointer;" onclick="openProgramCard(${JSON.stringify(r.program).replace(/"/g, '&quot;')})">
+              <div class="card-band" aria-hidden="true"><span class="${(FORMAT_POSTERS[r.format[0]] || DEFAULT_POSTER).two ? 'is-two' : ''}">${posterWordHTML(FORMAT_POSTERS[r.format[0]] || DEFAULT_POSTER)}</span></div>
+              <div class="card-tags">
+                <span class="card-format">${r.format.join(' / ') || 'Формат не указан'}</span>
+                ${getProgramTrajectory(r.program) ? `<span class="card-format">${getProgramTrajectory(r.program)}</span>` : ''}
+              </div>
+              <div class="card-title"><button type="button" class="card-open">${r.program}<span class="sr-only"> — подробнее о программе</span></button></div>
+              ${multiRef ? `<div class="card-refinement">По запросу: ${r.refinementText}</div>` : ''}
+              <div class="card-actions">
+                <button class="btn-archive" onclick="event.stopPropagation(); archiveProgramSummary(this, '${sid}', ${idx})">Подумать</button>
+                <button class="btn-like" onclick="event.stopPropagation(); likeProgramSummary(this, '${sid}', ${idx})">Интересно</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+
+  // Свайп вправо/влево по карточкам отключён: программы отмечаются только кнопками «Интересно» / «Подумать».
+}
+
+function likeProgramSummary(btn, skillId, i) {
+  const skill = SKILLS.find(s => s.id === skillId);
+  const rec = state.recommendations[skillId][i];
+  const exists = state.inventory.some(x => x.program === rec.program && x.skillId === skill.id);
+  if (exists) {
+    state.inventory = state.inventory.filter(x => !(x.program === rec.program && x.skillId === skill.id));
+  } else {
+    state.archive = state.archive.filter(x => !(x.program === rec.program && x.skillId === skill.id));
+    state.inventory.push({ program: rec.program, format: rec.format, skillId: skill.id });
+  }
+
+  const card = btn.closest('.card');
+  if (card) {
+    card.classList.toggle('liked', !exists);
+    card.classList.remove('archived');
+  }
+}
+
+function archiveProgramSummary(btn, skillId, i) {
+  const skill = SKILLS.find(s => s.id === skillId);
+  const rec = state.recommendations[skillId][i];
+  const exists = state.archive.some(x => x.program === rec.program && x.skillId === skill.id);
+  if (exists) {
+    state.archive = state.archive.filter(x => !(x.program === rec.program && x.skillId === skill.id));
+  } else {
+    state.inventory = state.inventory.filter(x => !(x.program === rec.program && x.skillId === skill.id));
+    state.archive.push({ program: rec.program, format: rec.format, skillId: skill.id });
+  }
+
+  const card = btn.closest('.card');
+  if (card) {
+    card.classList.toggle('archived', !exists);
+    card.classList.remove('liked');
+  }
+}
+
+// ============ СВАЙП-ЖЕСТЫ ============
+function attachSwipeHandlers(card) {
+  let startX = 0;
+  let startY = 0;
+  let currentX = 0;
+  let currentY = 0;
+  let isDragging = false;
+  let gestureBlocked = false;
+  const SWIPE_THRESHOLD = 60;
+  const VERTICAL_LIMIT = 40;
+  const DRAG_MULTIPLIER = 1.15;
+
+  card.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    startX = e.touches[0].clientX;
+    startY = e.touches[0].clientY;
+    currentX = startX;
+    currentY = startY;
+    isDragging = false;
+    gestureBlocked = false;
+  }, { passive: true });
+
+  card.addEventListener('touchmove', (e) => {
+    if (e.touches.length !== 1 || gestureBlocked) return;
+    currentX = e.touches[0].clientX;
+    currentY = e.touches[0].clientY;
+    const dx = currentX - startX;
+    const dy = currentY - startY;
+
+    if (!isDragging && Math.abs(dy) > VERTICAL_LIMIT && Math.abs(dy) > Math.abs(dx)) {
+      gestureBlocked = true;
+      return;
+    }
+
+    if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+      isDragging = true;
+      card.classList.add('dragging');
+      if (dx > 0) {
+        card.classList.add('dragging-right');
+        card.classList.remove('dragging-left');
+      } else {
+        card.classList.add('dragging-left');
+        card.classList.remove('dragging-right');
+      }
+      const inner = card.querySelector('.card-inner');
+      if (inner) {
+        const moved = dx * DRAG_MULTIPLIER;
+        const rotate = moved / 20;
+        inner.style.transform = `translateX(${moved}px) rotate(${rotate}deg)`;
+      }
+    }
+  }, { passive: true });
+
+  card.addEventListener('touchend', () => {
+    if (!isDragging) return;
+    const dx = currentX - startX;
+    const skillId = card.getAttribute('data-skill-id');
+    const recIdx = parseInt(card.getAttribute('data-rec-idx'), 10);
+
+    card.classList.remove('dragging', 'dragging-left', 'dragging-right');
+
+    if (Math.abs(dx) >= SWIPE_THRESHOLD) {
+      const direction = dx > 0 ? 'right' : 'left';
+      card.classList.add(direction === 'right' ? 'fly-right' : 'fly-left');
+
+      const inner = card.querySelector('.card-inner');
+      if (inner) inner.style.transform = '';
+
+      if (direction === 'right') {
+        const btn = card.querySelector('.btn-like');
+        if (btn) likeProgramSummary(btn, skillId, recIdx);
+      } else {
+        const btn = card.querySelector('.btn-archive');
+        if (btn) archiveProgramSummary(btn, skillId, recIdx);
+      }
+
+      setTimeout(() => {
+        card.classList.remove('fly-right', 'fly-left');
+      }, 400);
+
+      card.dataset.suppressClick = '1';
+      setTimeout(() => { card.dataset.suppressClick = ''; }, 500);
+    } else {
+      const inner = card.querySelector('.card-inner');
+      if (inner) {
+        inner.style.transform = '';
+      }
+    }
+
+    isDragging = false;
+  });
+
+  card.addEventListener('click', (e) => {
+    if (card.dataset.suppressClick === '1') {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true);
+}
+
+function renderCorrect() {
+  document.getElementById('main').innerHTML = `
+    <div class="screen active">
+      <h1>Вам подошла рекомендация?</h1>
+      <p class="muted">Ответьте честно — так мы поймём, нужно ли подобрать программы заново.</p>
+      <div class="options options-yesno">
+        <button class="option" onclick="go('final')">Да</button>
+        <button class="option" onclick="go('retry')">Нет</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderRetry() {
+  document.getElementById('main').innerHTML = `
+    <div class="screen active">
+      <h1>Хотите пройти заново?</h1>
+      <p class="muted">Данные диагностики сохранятся — вы начнёте сразу с выбора формата.</p>
+      <div class="options options-yesno">
+        <button class="option" onclick="restartFromFormat()">Да</button>
+        <button class="option" onclick="go('final')">Нет</button>
+      </div>
+    </div>
+  `;
+}
+
+function restartFromFormat() {
+  state.selectedSkills = [];
+  state.skillAnswers = {};
+  state.recommendations = {};
+  state.currentSkillIdx = 0;
+  state.inventory = [];
+  state.archive = [];
+  state.formats = [];
+  state.filterDisabled = false;
+  go('format');
+}
+
+// ============ ФИНАЛ ============
+function renderFinal() {
+  const userName = state.user.name.trim() || 'друг';
+  const hasAnyRecommendations = state.selectedSkills.some(
+    sid => (state.recommendations[sid] || []).length > 0
+  );
+
+  const savedCount = state.inventory.length + state.archive.length;
+  const recommendationsBlock = hasAnyRecommendations ? `
+    <h1>${userName}, вот ваши рекомендации!</h1>
+    <p class="muted">Мы подобрали для вас программы. Посмотрите их и при желании скачайте в PDF.</p>
+    <div class="final-tiles">
+      <button class="final-tile" onclick="openInventory()" title="Посмотреть рекомендации">
+        <span class="tile-icon">${ICONS.heart}</span>
+        ${savedCount ? `<span class="tile-count" aria-label="Отмечено программ: ${savedCount}">${savedCount}</span>` : ''}
+        <span>Посмотреть рекомендации</span>
+      </button>
+      <button class="final-tile" onclick="openCatalog()" title="Полный каталог программ">
+        <span class="tile-icon">${ICONS.book}</span>
+        <span>Каталог программ</span>
+      </button>
+    </div>
+    <p class="final-hint">PDF: откроется окно печати — выберите «Сохранить как PDF».</p>
+  ` : `
+    <h1>Рекомендаций пока нет, ${userName}</h1>
+    <p>По вашему запросу в выбранных форматах мы не нашли подходящих программ. Но это не значит, что учиться нечему.</p>
+    <p>Вы можете посмотреть все программы в каталоге или скачать их одним PDF. А также свяжитесь с нашим центром и расскажите подробнее о своём запросе — мы поможем подобрать подходящее обучение.</p>
+    <button class="btn-secondary" onclick="printFullCatalog()">Скачать полный каталог (PDF)</button>
+  `;
+
+  document.getElementById('main').innerHTML = `
+    <div class="screen active final-screen">
+      <div class="final-top">
+        ${hasAnyRecommendations ? `<button class="btn-catalog" onclick="printRecommendations()" title="Откроется окно печати — выберите «Сохранить как PDF»">${ICONS.file} Скачать PDF с рекомендациями</button>` : ''}
+        <button class="btn-catalog" onclick="printFullCatalog()" title="Откроется окно печати — выберите «Сохранить как PDF»">${ICONS.file} Скачать полный каталог (PDF)</button>
+      </div>
+      <div class="final-grid">
+        <section class="final-recs">
+          ${recommendationsBlock}
+        </section>
+        <section class="final-contacts">
+          <h2>Контакты центра</h2>
+          <p>Спасибо! Свяжитесь с сотрудниками центра, чтобы записаться на программы.</p>
+          <div class="contacts">
+            <div class="contact-row">
+              <img class="avatar employee-photo" src="images/8774.jpg" alt="София Филина — сотрудник центра" width="224" height="224">
+              <div>
+                <div class="contact-kicker">запись на программы</div>
+                <div><strong>София Филина</strong></div>
+                <div class="muted">+7 (999) 123-45-67</div>
+              </div>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn-ghost" onclick="resetFull()">Пройти заново с диагностикой</button>
+            <button class="btn-primary" onclick="restartFromFormat()">Пройти заново</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  `;
+}
+
+function showAllPrograms() {
+  const all = getAllPrograms();
+  alert('Всего программ: ' + all.length + '\n\n' + all.join('\n'));
+}
+
+function resetFull() {
+  state.selectedSkills = [];
+  state.skillAnswers = {};
+  state.recommendations = {};
+  state.currentSkillIdx = 0;
+  state.inventory = [];
+  state.archive = [];
+  state.formats = [];
+  state.filterDisabled = false;
+  state.studiedUnsure = false;
+  state.studiedPrograms = [];
+  state.user = { name: '', studied: null, ownRequest: '' };
+  go('cover');
+}
+
+// ============ ПЕЧАТЬ PDF ============
+function buildPrintHeader() {
+  return `
+    <div class="print-header">
+      <div class="print-logo">Н</div>
+      <div>
+        <div class="print-title">Навигатор обучения</div>
+        <div class="print-subtitle">Подбор образовательных программ</div>
+      </div>
+    </div>
+  `;
+}
+
+function printRecommendations() {
+  const seen = new Set();
+  const groups = [];
+  state.selectedSkills.forEach(sid => {
+    const skill = SKILLS.find(x => x.id === sid);
+    const recs = state.recommendations[sid] || [];
+    const uniqueRecs = [];
+    recs.forEach(r => {
+      if (seen.has(r.program)) return;
+      seen.add(r.program);
+      uniqueRecs.push(r);
+    });
+    if (uniqueRecs.length > 0) {
+      groups.push({ skill: skill.name, programs: uniqueRecs });
+    }
+  });
+
+  let html = buildPrintHeader();
+
+  if (groups.length === 0) {
+    html += '<p>Рекомендации пусты.</p>';
+  } else {
+    html += '<h2 class="print-section-title">Ваши рекомендации</h2>';
+    groups.forEach(g => {
+      html += `<div class="print-skill">Навык: ${g.skill}</div>`;
+            g.programs.forEach(r => {
+        html += `
+          <div class="print-program">
+            <div class="print-program-name">${r.program}</div>
+            <div class="print-program-format">Формат: ${r.format.join(' / ')}</div>
+            <div class="print-program-desc">${getProgramDescription(r.program)}</div>
+          </div>
+        `;
+      });
+    });
+  }
+
+  html += `<div class="print-footer">Навигатор обучения — прототип</div>`;
+
+  printHtml(html, 'навигатор-рекомендации');
+}
+
+function printFullCatalog() {
+  const formatOrder = ['СкилЛаб', 'ЛабПро', 'Мастер Классы', 'СкилЛайт'];
+  const all = getAllPrograms();
+  const byFormat = {};
+  formatOrder.forEach(f => byFormat[f] = []);
+  all.forEach(p => {
+    const fmts = getProgramFormats(p);
+    const primary = fmts[0] || 'СкилЛаб';
+    if (!byFormat[primary]) byFormat[primary] = [];
+    byFormat[primary].push(p);
+  });
+
+  let html = buildPrintHeader();
+  html += '<h2 class="print-section-title">Полный каталог программ</h2>';
+
+  formatOrder.forEach(fmt => {
+    const list = byFormat[fmt] || [];
+    if (list.length === 0) return;
+    html += `<div class="print-skill">Формат: ${fmt}</div>`;
+        list.forEach(p => {
+      html += `
+        <div class="print-program">
+          <div class="print-program-name">${p}</div>
+          <div class="print-program-format">Формат: ${getProgramFormats(p).join(' / ')}</div>
+          <div class="print-program-desc">${getProgramDescription(p)}</div>
+        </div>
+      `;
+    });
+  });
+
+  html += `<div class="print-footer">Навигатор обучения — прототип</div>`;
+
+  printHtml(html, 'навигатор-каталог');
+}
+
+function printHtml(html, title) {
+  const area = document.getElementById('printArea');
+  area.innerHTML = html;
+
+  const originalTitle = document.title;
+  document.title = title;
+
+  window.print();
+
+  setTimeout(() => {
+    document.title = originalTitle;
+    area.innerHTML = '';
+  }, 500);
+}
+
+// ============ МОДАЛЬНОЕ ОКНО РЕКОМЕНДАЦИЙ ============
+function openInventory() {
+  const modal = document.getElementById('inventoryModal');
+  const content = document.getElementById('inventoryContent');
+
+  const saved = state.inventory;
+  const archived = state.archive;
+  const total = saved.length + archived.length;
+
+  if (total === 0) {
+    content.innerHTML = `
+      <p class="muted">Пока пусто. Пройдите навигатор и отметьте программы как «Интересно» или «Подумать» — они появятся здесь.</p>
+    `;
+    modal.classList.add('active');
+    return;
+  }
+
+  let html = '';
+
+  html += `<h3 class="inv-title">Интересно · ${saved.length}</h3>`;
+  if (saved.length === 0) {
+    html += `<p class="muted">Пока пусто.</p>`;
+  } else {
+    html += saved.map(x => `
+      <div class="inv-card ${programColorClass(x.program, x.skillId)}" role="button" tabindex="0" onclick="openProgramCard(${JSON.stringify(x.program).replace(/"/g, '&quot;')})">
+        <div class="card-format">${x.format.join(' / ')}</div>
+        <div class="card-title">${x.program}</div>
+      </div>
+    `).join('');
+  }
+
+  html += `<h3 class="inv-title is-think">Подумать · ${archived.length}</h3>`;
+  if (archived.length === 0) {
+    html += `<p class="muted">Пока пусто.</p>`;
+  } else {
+    html += archived.map(x => `
+      <div class="inv-card is-think ${programColorClass(x.program, x.skillId)}" role="button" tabindex="0" onclick="openProgramCard(${JSON.stringify(x.program).replace(/"/g, '&quot;')})">
+        <div class="card-format">${x.format.join(' / ')}</div>
+        <div class="card-title">${x.program}</div>
+      </div>
+    `).join('');
+  }
+
+  content.innerHTML = html;
+  modal.classList.add('active');
+}
+
+function closeInventory() {
+  document.getElementById('inventoryModal').classList.remove('active');
+}
+
+// ============ МОДАЛЬНОЕ ОКНО ПРОГРАММЫ ============
+function openProgramCard(programName) {
+  // Если открыт каталог — запоминаем это и закрываем его
+  const catalogModal = document.getElementById('catalogModal');
+  state.catalogReturn = !!(catalogModal && catalogModal.classList.contains('active'));
+  if (state.catalogReturn) {
+    catalogModal.classList.remove('active');
+  }
+
+  const modal = document.getElementById('programModal');
+  const content = document.getElementById('programContent');
+  const formats = getProgramFormats(programName);
+  const detailed = PROGRAMS_DETAILED[programName];
+
+  content.className = programColorClass(programName);
+  if (!detailed) {
+    content.innerHTML = `
+      <div class="pm-head">
+        <h3>${programName}</h3>
+        <div class="pm-format">Формат: ${formats.join(' / ')}</div>
+      </div>
+      <p class="muted">Описание программы пока не добавлено.</p>
+    `;
+    modal.classList.add('active');
+    return;
+  }
+
+  const resultsHtml = (detailed.results || []).map(item => `<li>${item}</li>`).join('');
+  const topicsHtml = (detailed.topics || []).map(item => `<li>${item}</li>`).join('');
+  const toolsHtml = (detailed.tools || []).map(item => `<span>${item}</span>`).join('');
+  const trajectory = getProgramTrajectory(programName);
+
+  content.innerHTML = `
+    <div class="pm-head">
+      <h3>${programName}</h3>
+      <div class="pm-format">${formats.join(' / ')}${trajectory ? ' · трек «' + trajectory + '»' : ''} · ${detailed.format}</div>
+    </div>
+    <div class="pm-grid">
+      <section class="pm-section pm-learn">
+        <h4>Чему вы будете учиться</h4>
+        <p>${detailed.learn}</p>
+      </section>
+      ${resultsHtml ? `
+      <section class="pm-section pm-results">
+        <h4>Образовательные результаты</h4>
+        <ul>${resultsHtml}</ul>
+      </section>` : ''}
+      ${topicsHtml ? `
+      <section class="pm-section pm-topics">
+        <h4>Ключевые темы</h4>
+        <ul>${topicsHtml}</ul>
+      </section>` : ''}
+      ${toolsHtml ? `
+      <section class="pm-section pm-learn pm-toolbox">
+        <h4>Инструменты</h4>
+        <div class="pm-tools">${toolsHtml}</div>
+      </section>` : ''}
+    </div>
+  `;
+  modal.classList.add('active');
+}
+
+function closeProgramCard() {
+  document.getElementById('programModal').classList.remove('active');
+
+  // Если карточка открывалась из каталога — возвращаем пользователя в каталог
+  if (state.catalogReturn) {
+    state.catalogReturn = false;
+    openCatalog();
+  }
+}
+
+// ============ ПОЛНЫЙ КАТАЛОГ ============
+const CATALOG_FORMAT_ORDER = ['СкилЛаб', 'ЛабПро', 'Мастер Классы', 'СкилЛайт'];
+
+const catalogState = {
+  query: '',
+  formats: []
+};
+
+function openCatalog() {
+  catalogState.query = '';
+  catalogState.formats = [];
+  const search = document.getElementById('catalogSearch');
+  if (search) search.value = '';
+
+  renderCatalogChips();
+  renderCatalogList();
+  document.getElementById('catalogModal').classList.add('active');
+}
+
+function closeCatalog() {
+  document.getElementById('catalogModal').classList.remove('active');
+}
+
+function renderCatalogChips() {
+  const wrap = document.getElementById('catalogChips');
+  if (!wrap) return;
+  const chips = CATALOG_FORMAT_ORDER.map(f => {
+    const active = catalogState.formats.includes(f) ? 'active' : '';
+    return `<button class="chip ${active}" onclick="toggleCatalogFormat('${f}')">${f}</button>`;
+  }).join('');
+  const reset = catalogState.formats.length > 0
+    ? `<button class="chip chip-reset" onclick="resetCatalogFormats()">Сбросить</button>`
+    : '';
+  wrap.innerHTML = chips + reset;
+}
+
+function toggleCatalogFormat(fmt) {
+  const i = catalogState.formats.indexOf(fmt);
+  if (i >= 0) catalogState.formats.splice(i, 1);
+  else catalogState.formats.push(fmt);
+  renderCatalogChips();
+  renderCatalogList();
+}
+
+function resetCatalogFormats() {
+  catalogState.formats = [];
+  renderCatalogChips();
+  renderCatalogList();
+}
+
+function getCatalogItems() {
+  const all = getAllPrograms();
+  return all.map(p => ({
+    name: p,
+    formats: getProgramFormats(p),
+    trajectory: getProgramTrajectory(p),
+    description: getProgramDescription(p) || ''
+  }));
+}
+
+function renderCatalogList() {
+  const listEl = document.getElementById('catalogList');
+  const countEl = document.getElementById('catalogCount');
+  const searchEl = document.getElementById('catalogSearch');
+  if (!listEl) return;
+
+  catalogState.query = (searchEl?.value || '').trim().toLowerCase();
+
+  let items = getCatalogItems();
+
+  if (catalogState.formats.length > 0) {
+    items = items.filter(it =>
+      it.formats.some(f => catalogState.formats.includes(f))
+    );
+  }
+
+  if (catalogState.query) {
+    const q = catalogState.query;
+    items = items.filter(it =>
+      it.name.toLowerCase().includes(q) ||
+      it.description.toLowerCase().includes(q)
+    );
+  }
+
+  items.sort((a, b) => {
+    const fa = CATALOG_FORMAT_ORDER.indexOf(a.formats[0] || '');
+    const fb = CATALOG_FORMAT_ORDER.indexOf(b.formats[0] || '');
+    if (fa !== fb) return fa - fb;
+    return a.name.localeCompare(b.name, 'ru');
+  });
+
+  if (countEl) countEl.textContent = `Найдено: ${items.length}`;
+
+  if (items.length === 0) {
+    listEl.innerHTML = `<div class="catalog-empty">Ничего не найдено.<br>Попробуйте изменить запрос или сбросить фильтры.</div>`;
+    return;
+  }
+
+  listEl.innerHTML = items.map(it => {
+    const traj = it.trajectory
+      ? `<span class="card-format">${it.trajectory}</span>`
+      : '';
+    const fmt = it.formats.map(f => `<span class="card-format">${f}</span>`).join(' ');
+    const desc = it.description
+      ? `<div class="catalog-item-desc">${it.description}</div>`
+      : '';
+    return `
+      <div class="catalog-item ${programColorClass(it.name)}" role="button" tabindex="0" onclick="openProgramCard(${JSON.stringify(it.name).replace(/"/g, '&quot;')})">
+        <div>${fmt}${traj}</div>
+        <div class="catalog-item-title">${it.name}</div>
+        ${desc}
+      </div>
+    `;
+  }).join('');
+}
+
+document.getElementById('catalogModal').addEventListener('click', (e) => {
+  if (e.target.id === 'catalogModal') closeCatalog();
+});
+
+// ============ ОБРАБОТЧИКИ ЗАКРЫТИЯ ПО ФОНУ ============
+document.getElementById('inventoryModal').addEventListener('click', (e) => {
+  if (e.target.id === 'inventoryModal') closeInventory();
+});
+
+document.getElementById('programModal').addEventListener('click', (e) => {
+  if (e.target.id === 'programModal') closeProgramCard();
+});
+
+// ============ СТАРТ ============
+render();
+</script>
+
+<!-- ============ Кастомный курсор ============ -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+
+<svg class="ink-icon" xmlns="http://www.w3.org/2000/svg" version="1.1" width="800">
+  <defs>
+    <filter id="goo">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+      <feColorMatrix in="blur" mode="matrix" values="1 0 0 0 0 0 1 0 0 0 0 0 1 0 0 0 0 0 35 -15" result="goo" />
+      <feComposite in="SourceGraphic" in2="goo" operator="atop"/>
+    </filter>
+  </defs>
+</svg>
+
+<div id="cursor" class="Cursor"></div>
+
+<style>
+  /* Системный курсор прячется, только когда жёлтый курсор реально запустился (класс ставит скрипт).
+     Если библиотека курсора не загрузилась или включена высокая контрастность — остаётся обычный курсор. */
+  html.has-custom-cursor, html.has-custom-cursor body, html.has-custom-cursor * { cursor: none !important; }
+  @media (forced-colors: active) { #cursor { display: none !important; } }
+  @media (max-width: 768px), (hover: none) {
+    html, body, * { cursor: auto !important; }
+    #cursor { display: none !important; }
+  }
+  .ink-icon { position: absolute; width: 0; height: 0; overflow: hidden; pointer-events: none; }
+  .Cursor { pointer-events: none; position: fixed; display: block; border-radius: 0; transform-origin: center center; top: 0; left: 0; z-index: 99999; filter: url("#goo"); }
+  .Cursor span { position: absolute; display: block; width: 13px; height: 13px; border-radius: 10px; background-color: #F4DA40; transform-origin: center center; transform: translate(-50%, -50%); }
+  /* Над жёлтыми элементами у курсора появляется фиолетовая обводка */
+  .Cursor.on-yellow { filter: url("#goo") drop-shadow(2px 0 0 #5C068C) drop-shadow(-2px 0 0 #5C068C) drop-shadow(0 2px 0 #5C068C) drop-shadow(0 -2px 0 #5C068C); }
+</style>
+<script>
+(function () {
+  const cursor = document.getElementById('cursor');
+  if (!cursor) return;
+  let x = 0, y = 0, queued = false;
+  function isYellow(color) {
+    const m = color && color.match(/rgba?\(([^)]+)\)/);
+    if (!m) return false;
+    const [r, g, b, a = 1] = m[1].split(',').map(Number);
+    return a > 0.5 && r > 215 && g > 185 && b < 130;
+  }
+  function onYellow(el) {
+    for (; el && el !== document.documentElement; el = el.parentElement) {
+      const bg = getComputedStyle(el).backgroundColor;
+      if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent') return isYellow(bg);
+    }
+    return false;
+  }
+  function update() {
+    queued = false;
+    cursor.classList.toggle('on-yellow', onYellow(document.elementFromPoint(x, y)));
+  }
+  window.addEventListener('mousemove', e => {
+    x = e.clientX; y = e.clientY;
+    if (!queued) { queued = true; requestAnimationFrame(update); }
+  });
+})();
+</script>
+
+<script>
+(function() {
+  // На мобильных курсор не инициализируем
+  if (window.innerWidth <= 768) return;
+
+  const cursor = document.getElementById("cursor");
+  if (!cursor) return;
+
+  const amount = 20;
+  const sineDots = Math.floor(amount * 0.3);
+  const width = 13;
+  const idleTimeout = 150;
+
+  let lastFrame = 0;
+  let mousePosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  let dots = [];
+  let timeoutID;
+  let idle = false;
+
+  class Dot {
+    constructor(index = 0) {
+      this.index = index;
+      this.anglespeed = 0.05;
+      this.x = 0;
+      this.y = 0;
+      this.baseScale = 1 - 0.05 * index;
+      this.scale = this.baseScale;
+      this.range = width / 2 - width / 2 * this.scale + 2;
+      this.limit = width * 0.75 * this.scale;
+      this.element = document.createElement("span");
+      this.opacity = 1 - (index / amount) * 0.8;
+      gsap.set(this.element, { scale: this.scale, opacity: this.opacity });
+      cursor.appendChild(this.element);
+    }
+    lock() {
+      this.lockX = this.x;
+      this.lockY = this.y;
+      this.angleX = Math.PI * 2 * Math.random();
+      this.angleY = Math.PI * 2 * Math.random();
+    }
+    draw() {
+      if (!idle || this.index <= sineDots) {
+        gsap.set(this.element, { x: this.x, y: this.y });
+      } else {
+        this.angleX += this.anglespeed;
+        this.angleY += this.anglespeed;
+        this.y = this.lockY + Math.sin(this.angleY) * this.range;
+        this.x = this.lockX + Math.sin(this.angleX) * this.range;
+        gsap.set(this.element, { x: this.x, y: this.y });
+      }
+    }
+    setHover(active) {
+      const mult = active ? 1.7 : 1;
+      this.scale = this.baseScale * mult;
+      this.range = width / 2 - width / 2 * this.scale + 2;
+      this.limit = width * 0.75 * this.scale;
+      gsap.to(this.element, { duration: 0.3, scale: this.scale, ease: "power2.out" });
+    }
+  }
+
+  function init() {
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("touchmove", onTouchMove, { passive: true });
+    lastFrame += new Date();
+    buildDots();
+    render();
+
+    const interactiveSelector = "button, a, input, textarea, select, .option, .card, .tab, .btn-primary, .btn-secondary, .btn-ghost, .btn-like, .btn-archive";
+    let hoverActive = false;
+
+    document.addEventListener("mouseover", (e) => {
+      const target = e.target;
+      if (target && target.closest && target.closest(interactiveSelector)) {
+        if (!hoverActive) {
+          hoverActive = true;
+          dots.forEach(d => d.setHover(true));
+        }
+      }
+    });
+
+    document.addEventListener("mouseout", (e) => {
+      const from = e.target;
+      const to = e.relatedTarget;
+      const fromInteractive = from && from.closest && from.closest(interactiveSelector);
+      const toInteractive = to && to.closest && to.closest(interactiveSelector);
+      if (fromInteractive && !toInteractive && hoverActive) {
+        hoverActive = false;
+        dots.forEach(d => d.setHover(false));
+      }
+    });
+  }
+
+  function startIdleTimer() {
+    timeoutID = setTimeout(goInactive, idleTimeout);
+    idle = false;
+  }
+  function resetIdleTimer() {
+    clearTimeout(timeoutID);
+    startIdleTimer();
+  }
+  function goInactive() {
+    idle = true;
+    for (let dot of dots) dot.lock();
+  }
+  function buildDots() {
+    for (let i = 0; i < amount; i++) {
+      dots.push(new Dot(i));
+    }
+  }
+
+  const onMouseMove = (event) => {
+    mousePosition.x = event.clientX - width / 2;
+    mousePosition.y = event.clientY - width / 2;
+    resetIdleTimer();
+  };
+  const onTouchMove = (event) => {
+    if (!event.touches || !event.touches[0]) return;
+    mousePosition.x = event.touches[0].clientX - width / 2;
+    mousePosition.y = event.touches[0].clientY - width / 2;
+    resetIdleTimer();
+  };
+
+  const render = (timestamp) => {
+    positionCursor();
+    lastFrame = timestamp;
+    requestAnimationFrame(render);
+  };
+
+  const positionCursor = () => {
+    let x = mousePosition.x;
+    let y = mousePosition.y;
+    dots.forEach((dot, index, arr) => {
+      let nextDot = arr[index + 1] || arr[0];
+      dot.x = x;
+      dot.y = y;
+      dot.draw();
+      if (!idle || index <= sineDots) {
+        const dx = (nextDot.x - dot.x) * 0.35;
+        const dy = (nextDot.y - dot.y) * 0.35;
+        x += dx;
+        y += dy;
+      }
+    });
+  };
+
+  function start() {
+    if (!window.gsap) return;                                   // библиотека не загрузилась — оставляем системный курсор
+    if (window.matchMedia('(forced-colors: active)').matches) return;
+    if (start.done) return;
+    start.done = true;
+    init();
+    document.documentElement.classList.add('has-custom-cursor');
+  }
+  if (window.gsap) {
+    start();
+  } else {
+    window.addEventListener("load", start);
+  }
+})();
+</script>
+<!-- ============ /Кастомный курсор ============ -->
+
+<style>
+/* Accessibility improvements; no changes to existing color scheme or card layout. */
+/* Programmatically focused screen headings are announcements, not interactive controls. */
+#main h1[tabindex="-1"]:focus{outline:none!important;box-shadow:none!important}
+
+.sr-only{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+:where(button,input,textarea,[role="button"],[tabindex="0"]):focus-visible{outline:3px solid #F4DA40!important;outline-offset:3px!important}
+/* На белых поверхностях (окна, карточки программ) жёлтая рамка не видна — там фокус фиолетовый. */
+.modal :focus-visible,#tabContent .card-inner :focus-visible{outline-color:#5C068C!important}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;scroll-behavior:auto!important;transition-duration:0.01ms!important}}
+@media(forced-colors:active){.option.selected,.btn-secondary.selected,.tab.active,.chip.active{outline:2px solid Highlight;outline-offset:-3px}}
+</style>
+<script>
+(function(){
+  const modalIds=['inventoryModal','programModal','catalogModal'];
+  const lastFocus={};
+  function visibleModal(){return modalIds.map(id=>document.getElementById(id)).filter(el=>el?.classList.contains('active')).pop();}
+  function modalFocus(modal){return [...modal.querySelectorAll('button:not([disabled]),input:not([disabled]),[tabindex="0"]')].filter(el=>el.getClientRects().length);}
+  function syncModal(){
+    modalIds.forEach(id=>{const el=document.getElementById(id);el.setAttribute('aria-hidden',String(!el.classList.contains('active')));});
+  }
+  function onOpen(modal){
+    if(!modal) return;
+    lastFocus[modal.id]=document.activeElement;
+    syncModal();
+    const first=modalFocus(modal)[0];
+    if(first) first.focus({preventScroll:true});
+  }
+  function onClose(modal){
+    syncModal();
+    const another=visibleModal();
+    if(another){const first=modalFocus(another)[0];if(first)first.focus({preventScroll:true});return;}
+    const target=lastFocus[modal.id];
+    if(target?.isConnected)target.focus({preventScroll:true});
+  }
+  modalIds.forEach(id=>{
+    const el=document.getElementById(id);
+    const observer=new MutationObserver(()=>{
+      if(el.classList.contains('active'))onOpen(el);else onClose(el);
+    });
+    observer.observe(el,{attributes:true,attributeFilter:['class']});
+  });
+  document.addEventListener('keydown',e=>{
+    const modal=visibleModal();
+    if(modal){
+      if(e.key==='Escape'){
+        e.preventDefault();
+        ({inventoryModal:closeInventory,programModal:closeProgramCard,catalogModal:closeCatalog})[modal.id]();
+        return;
+      }
+      if(e.key==='Tab'){
+        const items=modalFocus(modal);if(!items.length)return;
+        const first=items[0],last=items[items.length-1];
+        if(e.shiftKey&&(document.activeElement===first||!modal.contains(document.activeElement))){e.preventDefault();last.focus();}
+        else if(!e.shiftKey&&(document.activeElement===last||!modal.contains(document.activeElement))){e.preventDefault();first.focus();}
+      }
+      return;
+    }
+    if((e.key==='Enter'||e.key===' ')&&e.target.matches('[role="button"][tabindex="0"]')){
+      if(e.target.closest('button'))return;
+      e.preventDefault();
+      if(e.target.classList.contains('card-inner') && typeof e.target.onclick === 'function') e.target.onclick.call(e.target,e);
+      else e.target.click();
+    }
+  });
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('button.option,button.btn-secondary,button.chip');
+    if(b)queueMicrotask(()=>{
+      const scope=b.closest('#studiedOptions,#studiedProgramsBlock,#formatOptions,#skillsOptions,#main,#catalogChips');
+      if(scope)scope.querySelectorAll('button.option,button.btn-secondary,button.chip').forEach(btn=>btn.setAttribute('aria-pressed',String(btn.classList.contains('selected')||btn.classList.contains('active'))));
+    });
+  });
+  const observer=new MutationObserver(()=>{
+    document.querySelectorAll('button.option,button.btn-secondary,button.chip').forEach(b=>{
+      if(!b.hasAttribute('aria-pressed'))b.setAttribute('aria-pressed',String(b.classList.contains('selected')||b.classList.contains('active')));
+    });
+  });
+  observer.observe(document.getElementById('app'),{childList:true,subtree:true});
+  document.querySelectorAll('button.option,button.btn-secondary,button.chip').forEach(b=>b.setAttribute('aria-pressed',String(b.classList.contains('selected')||b.classList.contains('active'))));
+})();
+</script>
+
+<script>
+/* ============ Подгонка экрана: постраничное листание вместо вертикального скролла ============
+   Только отображение. Если список не помещается в окно, он делится на страницы
+   (стрелки, точки, свайп вбок). Данные, выбор и обработчики не затрагиваются. */
+(function () {
+  const FIT_LISTS = '#formatOptions, #skillsOptions, #refinementOptions, #tabContent .cards';
+  const SWIPE_LISTS = '#formatOptions, #skillsOptions, #refinementOptions';
+
+  function mainEl() { return document.getElementById('main'); }
+  function listItems(list) { return [...list.children].filter(el => !el.classList.contains('pager')); }
+  function overflowing(list) {
+    const m = mainEl();
+    return m.scrollHeight > m.clientHeight + 2 ||
+           list.scrollHeight > list.clientHeight + 2 ||
+           list.scrollWidth > list.clientWidth + 2;
+  }
+  function reset(list) {
+    list.classList.remove('is-paged');
+    list.style.removeProperty('--page-cols');
+    listItems(list).forEach(el => { el.hidden = false; });
+    const pager = list.nextElementSibling;
+    if (pager && pager.classList.contains('pager')) pager.remove();
+    delete list._fit;
+  }
+  function showRange(items, from, to) {
+    items.forEach((el, i) => { el.hidden = !(i >= from && i < to); });
+  }
+  function renderPager(list) {
+    const f = list._fit;
+    const pages = Math.ceil(f.items.length / f.per);
+    const pager = f.pager;
+    pager.querySelector('.pager-dots').innerHTML = Array.from({ length: pages }, (_, i) => `<i class="${i === f.page ? 'on' : ''}"></i>`).join('');
+    pager.querySelector('.pager-label').textContent = (f.page + 1) + ' / ' + pages;
+    pager.querySelector('[data-dir="-1"]').disabled = f.page === 0;
+    pager.querySelector('[data-dir="1"]').disabled = f.page >= pages - 1;
+  }
+  function goPage(list, delta) {
+    const f = list._fit;
+    if (!f) return false;
+    const pages = Math.ceil(f.items.length / f.per);
+    const next = Math.min(pages - 1, Math.max(0, f.page + delta));
+    if (next === f.page) return false;
+    f.page = next;
+    showRange(f.items, f.page * f.per, (f.page + 1) * f.per);
+    renderPager(list);
+    return true;
+  }
+  function paginate(list) {
+    const items = listItems(list);
+    if (items.length < 2) return;
+    list.classList.add('is-paged');
+    const pager = document.createElement('div');
+    pager.className = 'pager';
+    pager.innerHTML = '<button type="button" class="pager-arrow" data-dir="-1" aria-label="Предыдущая страница">‹</button>' +
+      '<span class="pager-dots" aria-hidden="true"></span><span class="pager-label" aria-live="polite"></span>' +
+      '<button type="button" class="pager-arrow" data-dir="1" aria-label="Следующая страница">›</button>';
+    list.after(pager);
+    // Колонки: сколько афиш помещается в ширину при постраничном показе.
+    if (list.matches('#formatOptions, #skillsOptions')) {
+      const base = window.innerWidth >= 1100 ? 4 : (window.innerWidth >= 700 ? 2 : 1);
+      list.style.setProperty('--page-cols', String(base));
+    }
+    let per = items.length - 1;
+    for (; per > 1; per--) {
+      showRange(items, 0, per);
+      if (!overflowing(list)) break;
+    }
+    per = Math.max(1, per);
+    // Ровные страницы: на всех страницах одинаковое число карточек.
+    const pages = Math.ceil(items.length / per);
+    per = Math.ceil(items.length / pages);
+    if (list.style.getPropertyValue('--page-cols')) {
+      list.style.setProperty('--page-cols', String(Math.min(Number(list.style.getPropertyValue('--page-cols')), per)));
+    }
+    list._fit = { items, per, page: 0, pager };
+    showRange(items, 0, per);
+    renderPager(list);
+    pager.addEventListener('click', e => {
+      const b = e.target.closest('[data-dir]');
+      if (!b) return;
+      goPage(list, Number(b.dataset.dir));
+      // Стрелка стала неактивной (первая/последняя страница) — переносим фокус на соседнюю, чтобы он не терялся.
+      if (b.disabled && document.activeElement === b || b.disabled) {
+        const other = pager.querySelector(`[data-dir="${-Number(b.dataset.dir)}"]`);
+        if (other && !other.disabled) other.focus();
+      }
+    });
+  }
+  function attachSwipe(el, onSwipe) {
+    if (el._swipeBound) return;
+    el._swipeBound = true;
+    let x0 = 0, y0 = 0, moved = false;
+    el.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; moved = false;
+    }, { passive: true });
+    el.addEventListener('touchend', e => {
+      const t = e.changedTouches[0];
+      const dx = t.clientX - x0, dy = t.clientY - y0;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        moved = onSwipe(dx < 0 ? 1 : -1);
+      }
+    });
+    el.addEventListener('click', e => {
+      if (moved) { e.stopPropagation(); e.preventDefault(); moved = false; }
+    }, true);
+  }
+  function fitScreen() {
+    const m = mainEl();
+    if (!m) return;
+    const lists = [...m.querySelectorAll(FIT_LISTS)];
+    lists.forEach(reset);
+    lists.forEach(list => {
+      if (list.offsetParent === null) return;
+      // Телефон: навыки и уточнения прокручиваются вертикально, без листания страниц.
+      if (window.innerWidth < 700 && list.matches('#skillsOptions, #refinementOptions, #formatOptions, #tabContent .cards')) return;
+      if (overflowing(list)) paginate(list);
+      if (list.matches(SWIPE_LISTS)) attachSwipe(list, dir => goPage(list, dir));
+    });
+    const grid = document.getElementById('studiedGrid');
+    if (grid) attachSwipe(grid, dir => {
+      const before = typeof studiedPage === 'number' ? studiedPage : 0;
+      studiedGoPage(dir);
+      return studiedPage !== before;
+    });
+  }
+  // Описания на афишах форматов и навыков: самый крупный размер, при котором текст целиком
+  // помещается в каждую афишу (одинаковый для всех афиш на экране).
+  function fitPosterTexts() {
+    ['#formatOptions', '#skillsOptions'].forEach(sel => {
+      const descs = [...document.querySelectorAll(sel + ' .poster .poster-desc')];
+      if (!descs.length) return;
+      descs.forEach(d => { d.style.fontSize = ''; });
+      const visible = descs.filter(d => d.offsetParent !== null);
+      if (!visible.length) return;
+      let fs = Math.min(...visible.map(d => parseFloat(getComputedStyle(d).fontSize)));
+      const fits = () => visible.every(d => { const b = d.closest('.poster-body'); return b.scrollHeight <= b.clientHeight + 1; });
+      descs.forEach(d => { d.style.fontSize = fs + 'px'; });
+      while (fs > 11 && !fits()) {
+        fs -= 0.5;
+        descs.forEach(d => { d.style.fontSize = fs + 'px'; });
+      }
+    });
+  }
+  const fitScreenBase = fitScreen;
+  fitScreen = function () { fitScreenBase(); fitPosterTexts(); };
+  window.fitScreen = fitScreen;
+  const baseStudiedGoPage = studiedGoPage;
+  studiedGoPage = function (delta) {
+    const active = document.activeElement;
+    baseStudiedGoPage.apply(this, arguments);
+    if (active && active.disabled) {
+      const other = document.getElementById(active.id === 'studiedNext' ? 'studiedPrev' : 'studiedNext');
+      if (other && !other.disabled) other.focus();
+    }
+  };
+
+  // Смена экрана через View Transitions: браузер показывает плавный переход вместо мигания.
+  // Если браузер этого не умеет — экран меняется мгновенно, тоже без вспышки.
+  const baseGo = go;
+  let transitioning = false;
+  go = function () {
+    const args = arguments;
+    if (!document.startViewTransition || transitioning ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return baseGo.apply(this, args);
+    }
+    transitioning = true;
+    const t = document.startViewTransition(() => { try { baseGo.apply(this, args); } finally { transitioning = false; } });
+    t.finished.finally(() => { transitioning = false; });
+  };
+
+  // Карточка программы: подбираем размер текста, чтобы всё помещалось без прокрутки.
+  function fitProgramModal() {
+    const modal = document.querySelector('#programModal .modal');
+    if (!modal || !document.getElementById('programModal').classList.contains('active')) return;
+    // На телефоне текст не мельчим: там описание длиннее экрана, окно прокручивается.
+    const phone = window.innerWidth < 700;
+    let fs = phone ? 14 : 16;
+    const minFs = phone ? 14 : 11;
+    modal.style.setProperty('--pm-fs', fs + 'px');
+    while (fs > minFs && modal.scrollHeight > modal.clientHeight + 1) {
+      fs -= 0.5;
+      modal.style.setProperty('--pm-fs', fs + 'px');
+    }
+    modal.scrollTop = 0;
+  }
+  const baseOpenProgramCard = openProgramCard;
+  openProgramCard = function () { baseOpenProgramCard.apply(this, arguments); fitProgramModal(); };
+  window.addEventListener('resize', () => requestAnimationFrame(fitProgramModal));
+
+  // Сообщение об ошибке убирается, как только человек отвечает.
+  const baseSetStudied = setStudied;
+  setStudied = function () { baseSetStudied.apply(this, arguments); clearInlineError('studiedOptions'); };
+  const baseToggleSkill = toggleSkill;
+  toggleSkill = function () { baseToggleSkill.apply(this, arguments); clearInlineError('skillsOptions'); };
+  document.addEventListener('input', e => { if (e.target && e.target.id === 'f-own') clearInlineError('skillsOptions'); });
+
+  // Пункт 5: состояние «Интересно» / «Подумать» сообщается экранному диктору.
+  function syncCardPressed(card) {
+    if (!card) return;
+    const like = card.querySelector('.btn-like'), think = card.querySelector('.btn-archive');
+    if (like) like.setAttribute('aria-pressed', String(card.classList.contains('liked')));
+    if (think) think.setAttribute('aria-pressed', String(card.classList.contains('archived')));
+  }
+  function announce(text) {
+    const s = document.getElementById('a11yStatus');
+    if (!s) return;
+    s.textContent = '';
+    setTimeout(() => { s.textContent = text; }, 50);
+  }
+  function wrapMark(fnName, label) {
+    const base = window[fnName];
+    window[fnName] = function (btn) {
+      base.apply(this, arguments);
+      const card = btn && btn.closest('.card');
+      syncCardPressed(card);
+      if (card) {
+        const title = (card.querySelector('.card-open') || card.querySelector('.card-title'));
+        const name = title ? title.firstChild.textContent.trim() : 'Программа';
+        const on = card.classList.contains(fnName === 'likeProgramSummary' ? 'liked' : 'archived');
+        announce(on ? `${name} — отмечено «${label}»` : `${name} — отметка «${label}» снята`);
+      }
+    };
+  }
+  wrapMark('likeProgramSummary', 'Интересно');
+  wrapMark('archiveProgramSummary', 'Подумать');
+
+  const baseRender = render;
+  render = function () { baseRender.apply(this, arguments); fitScreen(); };
+  const baseSwitchTab = switchTab;
+  switchTab = function () {
+    baseSwitchTab.apply(this, arguments);
+    document.querySelectorAll('#tabContent .card').forEach(syncCardPressed);
+    fitScreen();
+  };
+
+  let t = null;
+  let lastW = window.innerWidth;
+  window.addEventListener('resize', () => {
+    clearTimeout(t);
+    t = setTimeout(() => {
+      // Экран «пройденные программы» пересчитывает число плиток на странице.
+      if (state.screen === 'studied' && Math.abs(window.innerWidth - lastW) > 40) render();
+      else fitScreen();
+      lastW = window.innerWidth;
+    }, 150);
+  });
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitScreen);
+  fitScreen();
+})();
+</script>
+</body>
+</html>
